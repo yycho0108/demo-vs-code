@@ -22,6 +22,7 @@ if __name__ == "__main__":
     mp = MotionPlanner(env)
 
     # Joint goal motion planning
+    env.reset()
     q_goal = [
         0.0, -0.5, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.5, 0.0, 0.0, 0.0, 0.0
@@ -33,6 +34,7 @@ if __name__ == "__main__":
 
 
     # EE goal motion planning
+    env.reset()
     left_ee_pose, right_ee_pose = env.get_ee_pose()
 
     left_ee_pose[0] += 0.1
