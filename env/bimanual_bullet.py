@@ -15,6 +15,10 @@ if str(BASEDIR) not in sys.path:
     sys.path.append(str(BASEDIR))
 
 
+from pybullet_planning.pybullet_tools.utils import *
+from .robot import Robot
+
+
 def getJointStates(robot):
   joint_states = sim.getJointStates(robot, range(sim.getNumJoints(robot)))
   joint_positions = [state[0] for state in joint_states]
@@ -31,6 +35,197 @@ def getMotorJointStates(robot):
   joint_velocities = [state[1] for state in joint_states]
   joint_torques = [state[3] for state in joint_states]
   return joint_positions, joint_velocities, joint_torques
+
+
+def ompl_state_to_list(state, num_joints):
+    return [state[i] for i in range(num_joints)]
+
+
+def get_validate_fn(body, joints, obstacles=[], attachments=[], self_collisions=True, disabled_collisions=set(),
+                     custom_limits={}, use_aabb=False, cache=False, max_distance=MAX_DISTANCE, **kwargs):
+    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions) if self_collisions else []
+    moving_links = frozenset(link for link in get_moving_links(body, joints)
+                             if can_collide(body, link))
+    attached_bodies = [attachment.child for attachment in attachments]
+    moving_bodies = [CollisionPair(body, moving_links)] + list(map(parse_body, attached_bodies))
+    get_obstacle_aabb = cached_fn(get_buffered_aabb, cache=cache, max_distance=max_distance/2., **kwargs)
+    limits_fn = get_limits_fn(body, joints, custom_limits=custom_limits)
+
+    def validate_fn(state):
+        q = ompl_state_to_list(state, len(joints))
+        if limits_fn(q):
+            return False
+        set_joint_positions(body, joints, q)
+        for attachment in attachments:
+            attachment.assign()
+        get_moving_aabb = cached_fn(get_buffered_aabb, cache=True, max_distance=max_distance/2., **kwargs)
+
+        for link1, link2 in check_link_pairs:
+            if (not use_aabb or aabb_overlap(get_moving_aabb(body), get_moving_aabb(body))) and \
+                    pairwise_link_collision(body, link1, body, link2):
+                return False
+
+        for body1, body2 in product(moving_bodies, obstacles):
+            if (not use_aabb or aabb_overlap(get_moving_aabb(body1), get_obstacle_aabb(body2))) \
+                    and pairwise_collision(body1, body2, **kwargs):
+                return False
+        return True
+    return validate_fn
+
+
+class EnvBase(ABC):
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.robot_id = None
+        self.obs_ids = {}
+        self.obj_ids = {}
+        self._load_plane_and_robot(cfg)
+        self._set_render_cfg(cfg["render"])
+
+    def _load_plane_and_robot(self, cfg):
+        self.sim = bullet_client.BulletClient(connection_mode=pybullet.GUI)
+        self.sim.setAdditionalSearchPath(pybullet_data.getDataPath())
+
+        # Set gravity
+        self.sim.setGravity(0, 0, -9.81)
+
+        # Set dt
+        self.hz = cfg["hz"]
+        self.dt = 1 / self.hz
+        self.sim.setTimeStep(self.dt)
+
+        # Plane
+        plane_id = self.sim.loadURDF("plane.urdf")
+        self.obs_ids["plane"] = plane_id
+
+        # Panda
+        start_pos = [0, 0, 0]
+        start_quat = self.sim.getQuaternionFromEuler([0, 0, 0])
+        self.robot_id = self.sim.loadURDF('assets/RobotBimanualV4/urdf/RobotBimanualV4_gripper.urdf', start_pos, start_quat, useFixedBase=True, globalScaling=1., flags=self.sim.URDF_USE_SELF_COLLISION)
+        self.robot = Robot(self.sim, self.robot_id)
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, cfg["q_init"])
+
+    @abstractmethod
+    def loadEnv(self):
+        pass
+
+    @abstractmethod
+    def reset():
+        pass
+
+    def get_joint_positions(self):
+        return np.array(get_joint_positions(self.robot_id, self.robot.arm_joint_indices))
+    
+    def get_ee_pose(self):
+        left_ee_pos, left_ee_quat = get_link_pose(self.robot_id, self.robot.left_arm_joint_indices[-1])
+        right_ee_pos, right_ee_quat = get_link_pose(self.robot_id, self.robot.right_arm_joint_indices[-1])
+        return np.array([list(left_ee_pos + left_ee_quat), list(right_ee_pos + right_ee_quat)])
+    
+    def check_collision(self, q):
+        q_orig = get_joint_positions(self.robot_id, self.robot.arm_joint_indices)
+        is_collision = get_collision_fn(
+            body=self.robot_id,
+            joints=self.robot.arm_joint_indices,
+            obstacles=self.obs_ids.values(),
+            cache=True
+        )(q)
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q_orig)
+        return is_collision
+    
+    def solve_ik(self, ee, left_or_right="left"):
+        q = self.get_joint_positions()
+        q_ik = self.robot.ik(ee, left_or_right)
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
+        
+        if q_ik is None:
+            return None
+        
+        if left_or_right == "left":
+            q[:6] = q_ik
+        elif left_or_right == "right":
+            q[6:] = q_ik
+        else:
+            raise ValueError("left_or_right should be either 'left' or 'right'")
+        
+        if self.check_collision(q):
+            return None
+
+        return q_ik
+
+    def _get_val_fn(self):
+        val_fn = get_validate_fn(
+            body=self.robot_id,
+            joints=self.robot.arm_joint_indices,
+            obstacles=self.obs_ids.values(),
+            cache=True
+        )
+        return val_fn
+
+    def _get_attached_val_fn(self, attached_obj_name):
+        attach_val_fn = get_validate_fn(
+            body=self.robot_id,
+            joints=self.robot.arm_joint_indices,
+            obstacles=self.obs_ids.values(),
+            attachments=[self.obj_ids[attached_obj_name]],
+            cache=True,
+        )
+        return attach_val_fn
+
+    def execute_trajectory(self, traj, render=False):
+        imgs = []
+        for i in range(len(traj)):
+            self.sim.setJointMotorControlArray(self.robot_id, self.robot.arm_joint_indices, self.sim.POSITION_CONTROL, targetPositions=traj[i])
+            self.sim.stepSimulation()
+            if render:
+                imgs.append(self.render())
+
+        return imgs
+
+    def _set_render_cfg(self, render_cfg):
+        self.width, self.height = render_cfg["width"], render_cfg["height"]
+
+        # Capture the current frame
+        self.view_matrix = self.sim.computeViewMatrix(
+            cameraEyePosition=render_cfg["cam"]["pos"],
+            cameraTargetPosition=render_cfg["cam"]["lookat"],
+            cameraUpVector=render_cfg["cam"]["up"],
+        )
+        self.projection_matrix = self.sim.computeProjectionMatrixFOV(
+            fov=render_cfg["cam"]["fov"], aspect=float(self.width) / self.height, nearVal=0.1, farVal=100.0
+        )
+
+    def render(self):
+        img = self.sim.getCameraImage(self.width, self.height, self.view_matrix, self.projection_matrix)
+        rgb = np.reshape(img[2], (self.height, self.width, 4))[:, :, :3]  # Extract RGB data
+        return rgb
+
+
+class PickCubeEnv(EnvBase):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.loadEnv()
+
+    def loadEnv(self):
+        # Table
+        table_shape = [0.3, 0.3, 0.4]
+        table_pos = [0.5, 0.0, 0.2]
+        table_quat = [0.0, 0.0, 0.0, 1.0]
+        table_id = create_box(*table_shape, )
+        set_pose(table_id,(table_pos, table_quat))
+        self.obs_ids["table"] = table_id
+
+        # Cube
+        cube_size = [0.05, 0.05, 0.05]
+        card_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
+        self.cube_pos = [0.5, 0.0, card_z]
+        self.cube_quat = [0.0, 0.0, 0.0, 1.0]
+        cube_id = create_box(*cube_size, color=BLUE)
+        set_pose(cube_id,(self.cube_pos, self.cube_quat))
+        self.obj_ids["cube"] = cube_id
+
+    def reset(self):
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
+        set_pose(self.obj_ids["cube"], (self.cube_pos, self.cube_quat))
 
     
 if __name__ == "__main__":
