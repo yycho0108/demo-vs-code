@@ -1,5 +1,5 @@
 from env.bimanual_bullet import PickCubeEnv
-from mp.ompl_wrapper import MotionPlanner
+from mp.ompl_wrapper import MotionPlanner, Command
 
 
 if __name__ == "__main__":
@@ -27,10 +27,9 @@ if __name__ == "__main__":
         0.0, -0.5, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.5, 0.0, 0.0, 0.0, 0.0
     ]
-    traj = mp.get_joint_trajectory(q_goal=q_goal)
+    command = mp.get_joint_command(q_goal=q_goal)
 
-    env.reset()
-    imgs = env.execute_trajectory(traj, render=True)
+    imgs = env.execute_command(command, render=True)
 
 
     # EE goal motion planning
@@ -43,10 +42,19 @@ if __name__ == "__main__":
     right_ee_pose[0] += 0.1
     right_ee_pose[2] += 0.1
 
-    traj1 = mp.get_joint_trajectory(left_ee_goal=left_ee_pose)
-    traj2 = mp.get_joint_trajectory(q_start=traj1[-1], right_ee_goal=right_ee_pose)
+    command1 = mp.get_joint_command(left_ee_goal=left_ee_pose)
+    command2 = mp.get_joint_command(q_start=command1[-1].target_q, right_ee_goal=right_ee_pose)
+    command = command1 + command2
 
-    traj = traj1 + traj2
+    imgs = env.execute_command(command, render=True)
 
+    # Gripper control
     env.reset()
-    imgs = env.execute_trajectory(traj, render=True)
+
+    # Gripper open
+    gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*100
+    # Gripper close
+    gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*100
+    command = gripper_open_command + gripper_close_command
+
+    imgs = env.execute_command(command)

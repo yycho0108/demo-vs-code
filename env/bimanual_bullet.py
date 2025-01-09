@@ -16,7 +16,10 @@ if str(BASEDIR) not in sys.path:
 
 
 from pybullet_planning.pybullet_tools.utils import *
-from .robot import Robot
+try:
+    from .robot import Robot
+except:
+    from robot import Robot
 
 
 def getJointStates(robot):
@@ -116,10 +119,26 @@ class EnvBase(ABC):
     def get_joint_positions(self):
         return np.array(get_joint_positions(self.robot_id, self.robot.arm_joint_indices))
     
+    def set_joint_positions(self, q):
+        assert len(q) == self.robot.num_arm_joints, f"Given q {q} is not matched to num_joints {self.robot.num_arm_joints}"
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
+    
     def get_ee_pose(self):
         left_ee_pos, left_ee_quat = get_link_pose(self.robot_id, self.robot.left_arm_joint_indices[-1])
         right_ee_pos, right_ee_quat = get_link_pose(self.robot_id, self.robot.right_arm_joint_indices[-1])
         return np.array([list(left_ee_pos + left_ee_quat), list(right_ee_pos + right_ee_quat)])
+    
+    def get_gripper_joint_position(self):
+        left_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices))
+        right_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.right_gripper_joint_indices))
+        return left_finger_pos, right_finger_pos
+
+    def get_gripper_opened(self):
+        left_finger_pos, right_finger_pos = self.get_gripper_joint_position()
+        is_left_opened = np.diff(left_finger_pos) > (self.robot.left_gripper_joint_limits[1][1] - self.robot.left_gripper_joint_limits[0][0])/2
+        is_right_opened = np.diff(right_finger_pos) > (self.robot.right_gripper_joint_limits[1][1] - self.robot.right_gripper_joint_limits[0][0])/2
+
+        return np.concatenate([is_left_opened, is_right_opened])
     
     def check_collision(self, q):
         q_orig = get_joint_positions(self.robot_id, self.robot.arm_joint_indices)
@@ -170,11 +189,38 @@ class EnvBase(ABC):
             cache=True,
         )
         return attach_val_fn
+    
+    def _set_target_joint_position(self, command):
+        self.sim.setJointMotorControlArray(
+            self.robot_id, 
+            self.robot.arm_joint_indices, 
+            self.sim.POSITION_CONTROL, 
+            targetPositions=command.target_q,
+        )
 
-    def execute_trajectory(self, traj, render=False):
+    def _set_gripper_command(self, command):
+        if command.left_gripper_open:
+            target_left_gripper_vel = self.robot.left_gripper_open_vel
+        else:
+            target_left_gripper_vel = self.robot.left_gripper_close_vel
+
+        if command.right_gripper_open:
+            target_right_gripper_vel = self.robot.right_gripper_open_vel
+        else:
+            target_right_gripper_vel = self.robot.right_gripper_close_vel
+
+        self.sim.setJointMotorControlArray(
+            self.robot_id, 
+            self.robot.left_gripper_joint_indices + self.robot.right_gripper_joint_indices, 
+            self.sim.VELOCITY_CONTROL,
+            targetVelocities=target_left_gripper_vel + target_right_gripper_vel
+        )
+
+    def execute_command(self, command, render=False):
         imgs = []
-        for i in range(len(traj)):
-            self.sim.setJointMotorControlArray(self.robot_id, self.robot.arm_joint_indices, self.sim.POSITION_CONTROL, targetPositions=traj[i])
+        for i in range(len(command)):
+            self._set_target_joint_position(command[i])
+            self._set_gripper_command(command[i])
             self.sim.stepSimulation()
             if render:
                 imgs.append(self.render())

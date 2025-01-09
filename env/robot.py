@@ -1,11 +1,21 @@
+from dataclasses import dataclass
 from pybullet_planning.pybullet_tools.utils import *
+    
+
+@dataclass
+class Command:
+    target_q: np.ndarray = np.zeros(12)
+    left_gripper_open: bool = False
+    right_gripper_open: bool = False
 
 
 class Robot:
     def __init__(self, sim, robot_id):
         self.sim = sim
         self.robot_id = robot_id
+        self._configure_joint_info(robot_id)
 
+    def _configure_joint_info(self, robot_id):
         self.num_joints = self._get_joints_num(robot_id)
         self.num_arm_joints = self.num_joints - 4
 
@@ -33,6 +43,10 @@ class Robot:
             self.all_joint_limits[0][14:], 
             self.all_joint_limits[1][14:]
         ]
+        self.left_gripper_close_vel = [1.0, -1.0]
+        self.left_gripper_open_vel = [-1.0, 1.0]
+        self.right_gripper_close_vel = [1.0, -1.0]
+        self.right_gripper_open_vel = [-1.0, 1.0]
 
     def _get_joints_indices(self, robot_id):
         joints_indices = get_movable_joints(robot_id)

@@ -1,11 +1,21 @@
+from dataclasses import dataclass
+import numpy as np
+
 from pybullet_planning.pybullet_tools.utils import *
 
 from ompl import base as ob
 from ompl import geometric as og
 
 
-def ompl_state_to_list(state, num_joints):
-    return [state[i] for i in range(num_joints)]
+@dataclass
+class Command:
+    target_q: np.ndarray = np.zeros(12)
+    left_gripper_open: bool = False
+    right_gripper_open: bool = False
+
+
+def ompl_state_to_np(state, num_joints):
+    return np.array([state[i] for i in range(num_joints)])
 
 
 class PbStateSpace(ob.RealVectorStateSpace):
@@ -64,7 +74,7 @@ class MotionPlanner:
         # Return False when collision.
         self.val_fn = self.env._get_val_fn()
 
-    def get_joint_trajectory(
+    def get_joint_command(
             self, 
             q_goal=None, 
             left_ee_goal=None, 
@@ -75,11 +85,19 @@ class MotionPlanner:
             interpolation_res=0.01, 
             attached_obj_name=None
         ):
+        q_orig = self.env.get_joint_positions()
+        gripper_opened = self.env.get_gripper_opened()
+
+        if q_start is None:
+            q_start = self.env.get_joint_positions()
+        else:
+            assert len(q_start) == self.num_joints, f"Given q_start {q_start} is not matched to num_joints {self.num_joints}"
+        
         assert q_goal is not None or left_ee_goal is not None or right_ee_goal is not None, "Either q_goal or ee_goal should be given."
         if q_goal is not None:
             assert len(q_goal) == self.num_joints, f"Given q_goal {q_goal} is not matched to num_joints {self.num_joints}"
         else:
-            q_goal = self.env.get_joint_positions()
+            q_goal = q_start.copy()
             if left_ee_goal is not None:
                 assert len(left_ee_goal) == 7, f"Given ee_goal {left_ee_goal} is not matched to 7"
                 left_q_goal = self.env.solve_ik(left_ee_goal, "left")
@@ -92,11 +110,6 @@ class MotionPlanner:
                 if right_q_goal is None:
                     return []
                 q_goal[self.num_joints//2:] = right_q_goal
-        if q_start is None:
-            q_start = get_joint_positions(self.robot_id, self.joint_indices)
-        else:
-            assert len(q_start) == self.num_joints, f"Given q_start {q_start} is not matched to num_joints {self.num_joints}"
-            set_joint_positions(self.robot_id, self.joint_indices, q_start)
 
         ss = og.SimpleSetup(self.space)
 
@@ -135,4 +148,16 @@ class MotionPlanner:
         # Interpolate trajectory
         traj.interpolate(int(traj.length()/interpolation_res))
 
-        return [ompl_state_to_list(state, self.num_joints) for state in traj.getStates()]
+        self.env.set_joint_positions(q_orig)
+
+        commands = []
+        for state in traj.getStates():
+            commands.append(
+                Command(
+                    target_q=ompl_state_to_np(state, self.num_joints),
+                    left_gripper_open = gripper_opened[0],
+                    right_gripper_open = gripper_opened[1]
+                )
+            )
+
+        return commands
