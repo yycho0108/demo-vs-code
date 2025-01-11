@@ -93,8 +93,9 @@ class EnvBase(ABC):
         self.sim.setGravity(0, 0, -9.81)
 
         # Set dt
-        self.hz = cfg["hz"]
-        self.dt = 1 / self.hz
+        self.sim_hz = cfg["sim_hz"]
+        self.ctrl_step = cfg["sim_hz"] // cfg["control_hz"]
+        self.dt = 1 / self.sim_hz
         self.sim.setTimeStep(self.dt)
 
         # Plane
@@ -106,7 +107,9 @@ class EnvBase(ABC):
         start_quat = self.sim.getQuaternionFromEuler([0, 0, 0])
         self.robot_id = self.sim.loadURDF('assets/RobotBimanualV4/urdf/RobotBimanualV4_gripper.urdf', start_pos, start_quat, useFixedBase=True, globalScaling=1., flags=self.sim.URDF_USE_SELF_COLLISION)
         self.robot = Robot(self.sim, self.robot_id)
-        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, cfg["q_init"])
+        self.set_joint_positions(cfg["q_init"])
+        self.set_gripper_open("left")
+        self.set_gripper_open("right")
 
     @abstractmethod
     def loadEnv(self):
@@ -122,6 +125,18 @@ class EnvBase(ABC):
     def set_joint_positions(self, q):
         assert len(q) == self.robot.num_arm_joints, f"Given q {q} is not matched to num_joints {self.robot.num_arm_joints}"
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
+    
+    def set_single_arm_joint_positions(self, q, left_or_right="left"):
+        assert left_or_right in ["left", "right"], "left_or_right should be either 'left' or 'right'"
+        assert len(q) == self.robot.num_arm_joints//2, f"Given q {q} is not matched to num_joints {self.robot.num_arm_joints//2}"
+        
+        q_all = self.get_joint_positions()
+        if left_or_right == "left":
+            q_all[:6] = q
+        elif left_or_right == "right":
+            q_all[6:] = q
+        
+        self.set_joint_positions(q_all)
     
     def get_ee_pose(self):
         left_ee_pos, left_ee_quat = get_link_pose(self.robot_id, self.robot.left_arm_joint_indices[-1])
@@ -140,6 +155,29 @@ class EnvBase(ABC):
 
         return np.concatenate([is_left_opened, is_right_opened])
     
+    def set_gripper_open(self, left_or_right="left"):
+        if left_or_right == "left":
+            set_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices, self.robot.left_gripper_open_pos)
+        elif left_or_right == "right":
+            set_joint_positions(self.robot_id, self.robot.right_gripper_joint_indices, self.robot.right_gripper_open_pos)
+        else:
+            raise ValueError("left_or_right should be either 'left' or 'right'")
+        
+    def set_gripper_close(self, left_or_right="left"):
+        if left_or_right == "left":
+            set_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices, self.robot.left_gripper_close_pos)
+        elif left_or_right == "right":
+            set_joint_positions(self.robot_id, self.robot.right_gripper_joint_indices, self.robot.right_gripper_close_pos)
+        else:
+            raise ValueError("left_or_right should be either 'left' or 'right'")
+    
+    def get_object_poses(self):
+        pose_dict = {}
+        for obj_name, obj_id in self.obj_ids.items():
+            pos, quat = get_pose(obj_id)
+            pose_dict[obj_name] = np.array(list(pos) + list(quat))
+        return pose_dict
+    
     def check_collision(self, q):
         q_orig = get_joint_positions(self.robot_id, self.robot.arm_joint_indices)
         is_collision = get_collision_fn(
@@ -151,13 +189,17 @@ class EnvBase(ABC):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q_orig)
         return is_collision
     
-    def solve_ik(self, ee, left_or_right="left"):
+    def solve_tool_ik(self, ee, left_or_right="left", max_attempts=5, check_collision=True):
+        assert left_or_right in ["left", "right"], "left_or_right should be either 'left' or 'right'"
         q = self.get_joint_positions()
-        q_ik = self.robot.ik(ee, left_or_right)
+        q_ik = self.robot.ik(ee, left_or_right, max_attempts=max_attempts)
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
         
         if q_ik is None:
             return None
+        
+        if not check_collision:
+            return q_ik
         
         if left_or_right == "left":
             q[:6] = q_ik
@@ -165,7 +207,7 @@ class EnvBase(ABC):
             q[6:] = q_ik
         else:
             raise ValueError("left_or_right should be either 'left' or 'right'")
-        
+
         if self.check_collision(q):
             return None
 
@@ -191,37 +233,52 @@ class EnvBase(ABC):
         return attach_val_fn
     
     def _set_target_joint_position(self, command):
+        if command.target_q is None:
+            return
         self.sim.setJointMotorControlArray(
-            self.robot_id, 
-            self.robot.arm_joint_indices, 
-            self.sim.POSITION_CONTROL, 
+            self.robot_id,
+            self.robot.arm_joint_indices,
+            self.sim.POSITION_CONTROL,
             targetPositions=command.target_q,
+            positionGains=[0.1]*self.robot.num_arm_joints
         )
 
     def _set_gripper_command(self, command):
-        if command.left_gripper_open:
-            target_left_gripper_vel = self.robot.left_gripper_open_vel
-        else:
-            target_left_gripper_vel = self.robot.left_gripper_close_vel
+        if command.left_gripper_open is not None:
+            if command.left_gripper_open:
+                target_left_gripper_vel = self.robot.left_gripper_open_vel
+            else:
+                target_left_gripper_vel = self.robot.left_gripper_close_vel
 
-        if command.right_gripper_open:
-            target_right_gripper_vel = self.robot.right_gripper_open_vel
-        else:
-            target_right_gripper_vel = self.robot.right_gripper_close_vel
+            self.sim.setJointMotorControlArray(
+                self.robot_id, 
+                self.robot.left_gripper_joint_indices, 
+                self.sim.VELOCITY_CONTROL,
+                targetVelocities=target_left_gripper_vel,
+                velocityGains=[0.1]*2,
+            )
 
-        self.sim.setJointMotorControlArray(
-            self.robot_id, 
-            self.robot.left_gripper_joint_indices + self.robot.right_gripper_joint_indices, 
-            self.sim.VELOCITY_CONTROL,
-            targetVelocities=target_left_gripper_vel + target_right_gripper_vel
-        )
+        if command.right_gripper_open is not None:
+            if command.right_gripper_open:
+                target_right_gripper_vel = self.robot.right_gripper_open_vel
+            else:
+                target_right_gripper_vel = self.robot.right_gripper_close_vel
+
+            self.sim.setJointMotorControlArray(
+                self.robot_id, 
+                self.robot.right_gripper_joint_indices, 
+                self.sim.VELOCITY_CONTROL,
+                targetVelocities=target_right_gripper_vel,
+                velocityGains=[0.5]*2,
+            )
 
     def execute_command(self, command, render=False):
         imgs = []
         for i in range(len(command)):
-            self._set_target_joint_position(command[i])
-            self._set_gripper_command(command[i])
-            self.sim.stepSimulation()
+            for _ in range(self.ctrl_step):
+                self._set_target_joint_position(command[i])
+                self._set_gripper_command(command[i])
+                self.sim.stepSimulation()
             if render:
                 imgs.append(self.render())
 
@@ -253,19 +310,19 @@ class PickCubeEnv(EnvBase):
 
     def loadEnv(self):
         # Table
-        table_shape = [0.3, 0.3, 0.4]
-        table_pos = [0.5, 0.0, 0.2]
+        table_shape = [0.5, 0.5, 0.8]
+        table_pos = [0.4, 0.0, 0.2]
         table_quat = [0.0, 0.0, 0.0, 1.0]
-        table_id = create_box(*table_shape, )
+        table_id = create_box(*table_shape)
         set_pose(table_id,(table_pos, table_quat))
         self.obs_ids["table"] = table_id
 
         # Cube
-        cube_size = [0.05, 0.05, 0.05]
+        cube_size = [0.02, 0.02, 0.1]
         card_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
-        self.cube_pos = [0.5, 0.0, card_z]
+        self.cube_pos = [table_pos[0], 0.0, card_z]
         self.cube_quat = [0.0, 0.0, 0.0, 1.0]
-        cube_id = create_box(*cube_size, color=BLUE)
+        cube_id = create_box(*cube_size, mass=0.1, color=BLUE)
         set_pose(cube_id,(self.cube_pos, self.cube_quat))
         self.obj_ids["cube"] = cube_id
 

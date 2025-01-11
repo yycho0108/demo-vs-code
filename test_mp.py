@@ -4,7 +4,8 @@ from mp.ompl_wrapper import MotionPlanner, Command
 
 if __name__ == "__main__":
     cfg = {
-        "hz": 100,
+        "sim_hz": 240,
+        "control_hz": 10,
         "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         "render": {
             "width": 640,

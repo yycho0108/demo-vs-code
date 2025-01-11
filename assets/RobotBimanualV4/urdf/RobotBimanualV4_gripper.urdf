@@ -993,4 +993,16 @@
       effort="0"
       velocity="0" />
   </joint>
+  <link name="left_tool"/>
+  <joint name="left_tool_joint" type="fixed">
+    <parent link="link6"/>
+    <child link="left_tool"/>
+    <origin xyz="0 0.125 0" rpy="0 0 0"/>
+  </joint>
+  <link name="right_tool"/>
+  <joint name="right_tool_joint" type="fixed">
+    <parent link="link12"/>
+    <child link="right_tool"/>
+    <origin xyz="0 0.125 0" rpy="0 0 0"/>
+  </joint>
 </robot>

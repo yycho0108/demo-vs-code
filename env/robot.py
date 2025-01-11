@@ -4,9 +4,9 @@ from pybullet_planning.pybullet_tools.utils import *
 
 @dataclass
 class Command:
-    target_q: np.ndarray = np.zeros(12)
-    left_gripper_open: bool = False
-    right_gripper_open: bool = False
+    target_q: np.ndarray = None
+    left_gripper_open: bool = None
+    right_gripper_open: bool = None
 
 
 class Robot:
@@ -14,6 +14,7 @@ class Robot:
         self.sim = sim
         self.robot_id = robot_id
         self._configure_joint_info(robot_id)
+        # self._set_dynamics(robot_id)
 
     def _configure_joint_info(self, robot_id):
         self.num_joints = self._get_joints_num(robot_id)
@@ -43,10 +44,29 @@ class Robot:
             self.all_joint_limits[0][14:], 
             self.all_joint_limits[1][14:]
         ]
-        self.left_gripper_close_vel = [1.0, -1.0]
-        self.left_gripper_open_vel = [-1.0, 1.0]
-        self.right_gripper_close_vel = [1.0, -1.0]
-        self.right_gripper_open_vel = [-1.0, 1.0]
+        self.left_gripper_close_pos = [0.0, 0.0]
+        self.left_gripper_open_pos = [-1.0, 1.0]
+        self.right_gripper_close_pos = [0.0, 0.0]
+        self.right_gripper_open_pos = [-1.0, 1.0]
+
+        self.left_gripper_close_vel = [0.6, -0.6]
+        self.right_gripper_close_vel = [0.6, -0.6]
+        self.left_gripper_open_vel = [-0.6, 0.6]
+        self.right_gripper_open_vel = [-0.6, 0.6]
+
+        self.left_tool_link = get_joint(self.robot_id, "left_tool_joint")
+        self.right_tool_link = get_joint(self.robot_id, "right_tool_joint")
+
+    def _set_dynamics(self, robot_id):
+        for link_id in self.left_gripper_joint_indices + self.right_gripper_joint_indices:
+            set_dynamics(
+                robot_id,
+                link_id,
+                lateralFriction=0.5,
+                spinningFriction=0.5,
+                # rollingFriction=1.0,
+                # restitution=0.0
+            )
 
     def _get_joints_indices(self, robot_id):
         joints_indices = get_movable_joints(robot_id)
@@ -77,19 +97,34 @@ class Robot:
 
         return np.array([left_ee, right_ee])
 
-    def ik(self, ee, left_or_right="left"):
+    def ik(self, ee, left_or_right="left", max_attempts=5, max_iterations=200):
         """
         return None if no solution found
         """
         q = None
         if left_or_right == "left":
-            qs = multiple_sub_inverse_kinematics(self.robot_id, self.left_arm_joint_indices[0], self.left_arm_joint_indices[-1], (ee[:3], ee[3:]))
+            qs = multiple_sub_inverse_kinematics(
+                self.robot_id,
+                self.left_arm_joint_indices[0],
+                self.left_tool_link,
+                (ee[:3], ee[3:]),
+                max_attempts=max_attempts,
+                max_iterations=max_iterations,
+            )
             if len(qs) > 0 :
-                q = qs[0][:6]
+                q = np.array(qs[0][:6])
         elif left_or_right == "right":
-            qs = multiple_sub_inverse_kinematics(self.robot_id, self.right_arm_joint_indices[0], self.right_arm_joint_indices[-1], (ee[:3], ee[3:]))
+            qs = multiple_sub_inverse_kinematics(
+                self.robot_id,
+                self.right_arm_joint_indices[0],
+                self.right_tool_link,
+                (ee[:3], ee[3:]),
+                max_attempts=max_attempts,
+                max_iterations=max_iterations,
+            )
             if len(qs) > 0:
-                q = qs[0][8:14]
+                q = np.array(qs[0][8:14])
         else:
             raise ValueError("left_or_right should be either 'left' or 'right'")
-        return np.array(q)
+
+        return q

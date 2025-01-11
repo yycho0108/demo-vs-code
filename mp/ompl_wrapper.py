@@ -9,9 +9,9 @@ from ompl import geometric as og
 
 @dataclass
 class Command:
-    target_q: np.ndarray = np.zeros(12)
-    left_gripper_open: bool = False
-    right_gripper_open: bool = False
+    target_q: np.ndarray = None
+    left_gripper_open: bool = None
+    right_gripper_open: bool = None
 
 
 def ompl_state_to_np(state, num_joints):
@@ -80,13 +80,18 @@ class MotionPlanner:
             left_ee_goal=None, 
             right_ee_goal=None, 
             q_start=None, 
+            open_gripper=None,
             timeout=1.0, 
             simplify=True, 
             interpolation_res=0.01, 
-            attached_obj_name=None
+            attached_obj_name=None,
         ):
         q_orig = self.env.get_joint_positions()
-        gripper_opened = self.env.get_gripper_opened()
+
+        if open_gripper is not None:
+            gripper_command = [open_gripper, open_gripper]
+        else:
+            gripper_command = self.env.get_gripper_opened()
 
         if q_start is None:
             q_start = self.env.get_joint_positions()
@@ -100,14 +105,16 @@ class MotionPlanner:
             q_goal = q_start.copy()
             if left_ee_goal is not None:
                 assert len(left_ee_goal) == 7, f"Given ee_goal {left_ee_goal} is not matched to 7"
-                left_q_goal = self.env.solve_ik(left_ee_goal, "left")
+                left_q_goal = self.env.solve_tool_ik(left_ee_goal, "left")
                 if left_q_goal is None:
+                    print("No IK solution found for left_ee_goal!!")
                     return []
                 q_goal[:self.num_joints//2] = left_q_goal
             
             if right_ee_goal is not None:
-                right_q_goal = self.env.solve_ik(right_ee_goal, "right")
+                right_q_goal = self.env.solve_tool_ik(right_ee_goal, "right")
                 if right_q_goal is None:
+                    print("No IK solution found for right_ee_goal!!")
                     return []
                 q_goal[self.num_joints//2:] = right_q_goal
 
@@ -136,6 +143,7 @@ class MotionPlanner:
         # Solve
         if not ss.solve(timeout):
             # No solution found. Return empty list
+            print("No motion planning solution found!!")
             return []
 
         # Simplify solution such as shortcut, reduce vertices, smoothBSpline,
@@ -155,8 +163,8 @@ class MotionPlanner:
             commands.append(
                 Command(
                     target_q=ompl_state_to_np(state, self.num_joints),
-                    left_gripper_open = gripper_opened[0],
-                    right_gripper_open = gripper_opened[1]
+                    left_gripper_open = gripper_command[0],
+                    right_gripper_open = gripper_command[1]
                 )
             )
 
