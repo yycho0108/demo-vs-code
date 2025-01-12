@@ -7,7 +7,7 @@ from scipy.spatial.transform import Rotation as R
 if __name__ == "__main__":
     cfg = {
         "sim_hz": 240,
-        "control_hz": 10,
+        "control_hz": 240,
         "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         "render": {
             "width": 640,
@@ -41,5 +41,4 @@ if __name__ == "__main__":
 
     command = gripper_open_command + to_box_command + gripper_close_command + to_up_command
     
-    breakpoint()
     imgs = env.execute_command(command, render=True)

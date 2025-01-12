@@ -49,10 +49,10 @@ class Robot:
         self.right_gripper_close_pos = [0.0, 0.0]
         self.right_gripper_open_pos = [-1.0, 1.0]
 
-        self.left_gripper_close_vel = [0.6, -0.6]
-        self.right_gripper_close_vel = [0.6, -0.6]
-        self.left_gripper_open_vel = [-0.6, 0.6]
-        self.right_gripper_open_vel = [-0.6, 0.6]
+        self.left_gripper_close_vel = [5.0, -5.0]
+        self.right_gripper_close_vel = [5.0, -5.0]
+        self.left_gripper_open_vel = [-5.0, 5.0]
+        self.right_gripper_open_vel = [-5.0, 5.0]
 
         self.left_tool_link = get_joint(self.robot_id, "left_tool_joint")
         self.right_tool_link = get_joint(self.robot_id, "right_tool_joint")

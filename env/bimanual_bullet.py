@@ -108,8 +108,8 @@ class EnvBase(ABC):
         self.robot_id = self.sim.loadURDF('assets/RobotBimanualV4/urdf/RobotBimanualV4_gripper.urdf', start_pos, start_quat, useFixedBase=True, globalScaling=1., flags=self.sim.URDF_USE_SELF_COLLISION)
         self.robot = Robot(self.sim, self.robot_id)
         self.set_joint_positions(cfg["q_init"])
-        self.set_gripper_open("left")
-        self.set_gripper_open("right")
+        # self.set_gripper_open("left")
+        # self.set_gripper_open("right")
 
     @abstractmethod
     def loadEnv(self):
@@ -246,30 +246,30 @@ class EnvBase(ABC):
     def _set_gripper_command(self, command):
         if command.left_gripper_open is not None:
             if command.left_gripper_open:
-                target_left_gripper_vel = self.robot.left_gripper_open_vel
+                target_left_gripper_vel = self.robot.left_gripper_open_pos
             else:
-                target_left_gripper_vel = self.robot.left_gripper_close_vel
+                target_left_gripper_vel = self.robot.left_gripper_close_pos
 
             self.sim.setJointMotorControlArray(
                 self.robot_id, 
                 self.robot.left_gripper_joint_indices, 
-                self.sim.VELOCITY_CONTROL,
-                targetVelocities=target_left_gripper_vel,
-                velocityGains=[0.1]*2,
+                self.sim.POSITION_CONTROL,
+                targetPositions=target_left_gripper_vel,
+                positionGains=[0.02]*2,
             )
 
         if command.right_gripper_open is not None:
             if command.right_gripper_open:
-                target_right_gripper_vel = self.robot.right_gripper_open_vel
+                target_right_gripper_vel = self.robot.right_gripper_open_pos
             else:
-                target_right_gripper_vel = self.robot.right_gripper_close_vel
+                target_right_gripper_vel = self.robot.right_gripper_close_pos
 
             self.sim.setJointMotorControlArray(
                 self.robot_id, 
                 self.robot.right_gripper_joint_indices, 
-                self.sim.VELOCITY_CONTROL,
-                targetVelocities=target_right_gripper_vel,
-                velocityGains=[0.5]*2,
+                self.sim.POSITION_CONTROL,
+                targetPositions=target_right_gripper_vel,
+                positionGains=[0.02]*2,
             )
 
     def execute_command(self, command, render=False):
