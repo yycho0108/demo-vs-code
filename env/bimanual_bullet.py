@@ -330,58 +330,93 @@ class PickCubeEnv(EnvBase):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
         set_pose(self.obj_ids["cube"], (self.cube_pos, self.cube_quat))
 
+class PenholderEnv(EnvBase):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.loadEnv()
+
+    def loadEnv(self):
+        # Table
+        table_shape = [0.4, 0.84, 0.5]
+        table_pos = [0.3, 0.0, 0.25]
+        table_quat = [0.0, 0.0, 0.0, 1.0]
+        table_id = create_box(*table_shape, color=GREY)
+        set_pose(table_id,(table_pos, table_quat))
+        self.obs_ids["table"] = table_id
+
+        # Cube
+        holder_z = table_pos[2] + table_shape[2]/2
+        self.holder_pos = [table_pos[0]+0.1, -0.1, holder_z]
+        self.holder_quat = [0.0, 0.0, 0.0, 1.0]
+        penholder_id = create_obj(path="assets/meshes/penholder_coacd.obj", color=GREEN)
+        set_pose(penholder_id,(self.holder_pos, self.holder_quat))
+        self.obj_ids["holder"] = penholder_id
+
+        # pen_radius = 0.01
+        # pen_height = 0.12
+
+        # pen_z = table_pos[2] + table_shape[2]/2 + pen_height/2
+        # self.pen_pos = [table_pos[0]+0.1, 0.1, pen_z]
+        # self.pen_quat = [0.0, 0.0, 0.0, 1.0]
+        # pen_id = create_cylinder(pen_radius, pen_height, mass=0.1, color=BLUE)
+        # set_pose(pen_id,(self.pen_pos, self.pen_quat))
+        # self.obj_ids["pen"] = pen_id
+
+        pen_size = [0.01, 0.01, 0.12]
+
+        pen_z = table_pos[2] + table_shape[2]/2 + pen_size[2]/2
+        self.pen_pos = [table_pos[0]+0.1, 0.1, pen_z]
+        self.pen_quat = [0.0, 0.0, 0.0, 1.0]
+        pen_id = create_box(*pen_size, mass=0.1, color=BLUE)
+        set_pose(pen_id,(self.pen_pos, self.pen_quat))
+        self.obj_ids["pen"] = pen_id
+
+    def check_success(self):
+        pen_pose = get_pose(self.obj_ids["pen"])
+        holder_pose = get_pose(self.obj_ids["holder"])
+        return np.linalg.norm(holder_pose[:2] - pen_pose[:2]) < 0.03 and holder_pose[2] < 0.1
+
+    def reset(self):
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
+        set_pose(self.obj_ids["holder"], (self.holder_pos, self.holder_quat))
+        set_pose(self.obj_ids["pen"],(self.pen_pos, self.pen_quat))
     
 if __name__ == "__main__":
-    sim = bullet_client.BulletClient(connection_mode=pybullet.GUI)
-    sim.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-    # Plane
-    sim.loadURDF("plane.urdf", [0,0,0])
-    # tableUid = sim.loadURDF("table/table.urdf", basePosition = [0, -0.65, -0.12])
-    # URDF_PATH = 'RobotArmV3URDF/urdf/RobotArmV3URDF.urdf'
-    # PYBULLET_URDF_PATH = 'RobotArmV3URDF/urdf/RobotArmV3URDF.urdf'
-    URDF_PATH = 'assets/RobotBimanualV4/urdf/RobotBimanualV4_gripper.urdf'
-    PYBULLET_URDF_PATH = 'assets/RobotBimanualV4/urdf/RobotBimanualV4_gripper.urdf'
+    cfg = {
+        "sim_hz": 240,
+        "control_hz": 240,
+        "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "render": {
+            "width": 640,
+            "height": 480,
+            "cam": {
+                "pos": [1, 1, 1],
+                "lookat": [0.3, 0, 0.6],
+                "up": [0, 0, 1],
+                "fov": 60,
+            }
+        }
+    }
+
+    env = PenholderEnv(cfg)
+    sim = env.sim
 
     L_JOINT_LIMIT_MIN = np.pi/180.*np.array([-90.,  -90., -180.,  -45., -210., -125.]) 
     L_JOINT_LIMIT_MAX = np.pi/180.*np.array([50.,  80., 80.,  75., 210. , 125.])
     R_JOINT_LIMIT_MIN = np.pi/180.*np.array([-50.,  -80., -80.,  -75., -210., -125.]) 
     R_JOINT_LIMIT_MAX = np.pi/180.*np.array([90.,  90., 180.,  45., 210. , 125.])
 
-    # Panda
-    startPos = [0, 0, 0]
-    startOrientation = sim.getQuaternionFromEuler([0, 0, 0])
-    robotId = sim.loadURDF(PYBULLET_URDF_PATH, startPos, startOrientation, useFixedBase=1)
-
-    numJoints = sim.getNumJoints(robotId)
+    numJoints = sim.getNumJoints(env.robot_id)
     link_id_dict = dict()
     joint_id_dict = dict()
     for _id in range(numJoints):
-        joint_info = sim.getJointInfo(robotId, _id)
+        joint_info = sim.getJointInfo(env.robot_id, _id)
         link_name = joint_info[12].decode('UTF-8')
         link_id_dict[link_name] = _id
         joint_name = joint_info[1].decode('UTF-8')
         joint_id_dict[joint_name] = _id
         print(link_name, joint_name, _id)
-    
-    # sim.changeVisualShape(robotId, link_id_dict['link1'], rgbaColor=[1., 1., 1., 1.])
-    # sim.changeVisualShape(robotId, link_id_dict['link2'], rgbaColor=[0., 0., 0., 1.])
-    # sim.changeVisualShape(robotId, link_id_dict['link3'], rgbaColor=[0., 0., 1., 1.])
-    # sim.changeVisualShape(robotId, link_id_dict['link4'], rgbaColor=[0., 1., 1., 1.])
-    # sim.changeVisualShape(robotId, link_id_dict['link5'], rgbaColor=[1., 0., 1., 1.])
-    # sim.changeVisualShape(robotId, link_id_dict['link6'], rgbaColor=[1., 1., 0., 1.])
-
-
-    # link1 joint1 0
-    # link2 joint2 1
-    # link3 joint3 2
-    # link4 joint4 3
-    # link5 joint5 4
-    # link6 joint6 5
-
-    end_effector_name = 'link6'
-    end_effector_name_pybullet = "link6" # link6
-    # sim.getLinkState(robotId, link_id_dict[end_effector])[0]
 
     control_dt = 1./100
     # Control Frequency
@@ -390,20 +425,12 @@ if __name__ == "__main__":
     
     debugparams = []
     MODE = 'pos' # 'jp' or 'pos' or 'sinusoidal' or 'inv_dyn'
-    init_EE_pos = sim.getLinkState(robotId, link_id_dict[end_effector_name_pybullet])[0]
-    
-    # ee JP control
-    if MODE == 'jp' or MODE == 'inv_dyn':
-        debugparams.append(sim.addUserDebugParameter("end-effector X",-0.3,0.3))
-        debugparams.append(sim.addUserDebugParameter("end-effector Y",-0.3,0.3))
-        debugparams.append(sim.addUserDebugParameter("end-effector Z",-0.3,0.3))
 
-        for i in range(numJoints):
-            sim.setJointMotorControl2(robotId, i, sim.VELOCITY_CONTROL, force=0.01)
-
-    elif MODE == 'pos':
+    if MODE == 'pos':
+        init_q = np.array([-0.336, -0.056, -0.252, 0.405, 0.0, 0.0])
+        init_ee_pose = np.array([3.05173844e-01, 1.32409513e-01, 6.22422099e-01, -2.15557497e-02, 7.86278248e-02, -8.11488986e-01, 5.78652442e-01])
         for i in range(6):
-            debugparams.append(sim.addUserDebugParameter(f"theta_{i+1}",L_JOINT_LIMIT_MIN[i],L_JOINT_LIMIT_MAX[i],0))
+            debugparams.append(sim.addUserDebugParameter(f"theta_{i+1}",L_JOINT_LIMIT_MIN[i],L_JOINT_LIMIT_MAX[i],init_q[i]))
         
         for i in range(6, 12):
             debugparams.append(sim.addUserDebugParameter(f"theta_{i+1}",R_JOINT_LIMIT_MIN[i-6],R_JOINT_LIMIT_MAX[i-6],0))
@@ -412,131 +439,24 @@ if __name__ == "__main__":
         debugparams.append(sim.addUserDebugParameter(f"right_finger", -45.*np.pi/180., 0, -45.*np.pi/180.))
             
     
-    task = "pen_holder"
+
     
-    if task == "culling":
-        table_height = 0.4
-        tableShape = (1.0, 0.3, table_height/2)
-        tablePosition = (1.1, 0.3, table_height/2)
-        boxColor = (np.array([170, 170, 170, 255]) / 255.0).tolist()
-        tableVisualShapeId = sim.createVisualShape(
-            shapeType=sim.GEOM_BOX,
-            halfExtents=tableShape,
-            rgbaColor=boxColor
-        )
-        tableCollisionShapeId = sim.createCollisionShape(
-            shapeType=sim.GEOM_BOX, 
-            halfExtents=tableShape
-        )
-        tableId = sim.createMultiBody(
-            baseMass=10,
-            baseCollisionShapeIndex=tableCollisionShapeId,
-            baseVisualShapeIndex=tableVisualShapeId,
-            basePosition=tablePosition
-        )
-
-        meshScale = [1.5, 1.5, 1.5]
-        #the visual shape and collision shape can be re-used by all createMultiBody instances (instancing)
-        visualShapeId = sim.createVisualShape(shapeType=sim.GEOM_MESH,
-                                            fileName="assets/meshes/culling.stl",
-                                            rgbaColor=[1, 0, 0, 1],
-                                            specularColor=[0.4, .4, 0],
-                                            meshScale=meshScale)
-        collisionShapeId = sim.createCollisionShape(shapeType=sim.GEOM_MESH,
-                                                fileName="assets/meshes/culling.stl",
-                                                meshScale=meshScale)
-
-
-        cullingId = sim.createMultiBody(baseMass=1,
-                        baseInertialFramePosition=[0, 0, 0],
-                        baseCollisionShapeIndex=collisionShapeId,
-                        baseVisualShapeIndex=visualShapeId,
-                        basePosition=[0.3, 0.3, table_height],
-                        baseOrientation = [0, 0, 0.7071068, 0.7071068],
-                        useMaximalCoordinates=True)
-        
-
-    if task == "pen_holder":
-        table_height = 0.4
-        tableShape = (0.2, 0.42, table_height/2)
-        tablePosition = (0.3, 0.0, table_height/2)
-        boxColor = (np.array([170, 170, 170, 255]) / 255.0).tolist()
-        tableVisualShapeId = sim.createVisualShape(
-            shapeType=sim.GEOM_BOX,
-            halfExtents=tableShape,
-            rgbaColor=boxColor
-        )
-        tableCollisionShapeId = sim.createCollisionShape(
-            shapeType=sim.GEOM_BOX, 
-            halfExtents=tableShape
-        )
-        tableId = sim.createMultiBody(
-            baseMass=10,
-            baseCollisionShapeIndex=tableCollisionShapeId,
-            baseVisualShapeIndex=tableVisualShapeId,
-            basePosition=tablePosition
-        )
-
-        meshScale = [1., 1., 1.]
-        #the visual shape and collision shape can be re-used by all createMultiBody instances (instancing)
-        visualShapeId = sim.createVisualShape(shapeType=sim.GEOM_MESH,
-                                            fileName="assets/meshes/penholder.stl",
-                                            rgbaColor=[0, 1, 0, 1],
-                                            specularColor=[0.4, .4, 0],
-                                            meshScale=meshScale)
-        collisionShapeId = sim.createCollisionShape(shapeType=sim.GEOM_MESH,
-                                                fileName="assets/meshes/penholder.stl",
-                                                meshScale=meshScale)
-
-
-        holderId = sim.createMultiBody(baseMass=1,
-                        baseInertialFramePosition=[0, 0, 0],
-                        baseCollisionShapeIndex=collisionShapeId,
-                        baseVisualShapeIndex=visualShapeId,
-                        basePosition=[0.3, 0., table_height],
-                        useMaximalCoordinates=True)
-        
-        # meshScale = [1., 1., 1.]
-        # #the visual shape and collision shape can be re-used by all createMultiBody instances (instancing)
-        # visualShapeId = sim.createVisualShape(shapeType=sim.GEOM_MESH,
-        #                                     fileName="pen.stl",
-        #                                     rgbaColor=[0, 1, 0, 1],
-        #                                     specularColor=[0.4, .4, 0],
-        #                                     meshScale=meshScale)
-        # collisionShapeId = sim.createCollisionShape(shapeType=sim.GEOM_MESH,
-        #                                         fileName="pen.stl",
-        #                                         meshScale=meshScale)
-
-
-        # penId = sim.createMultiBody(baseMass=1,
-        #                 baseInertialFramePosition=[0, 0, 0],
-        #                 baseCollisionShapeIndex=collisionShapeId,
-        #                 baseVisualShapeIndex=visualShapeId,
-        #                 basePosition=[0.3, 0., table_height],
-        #                 useMaximalCoordinates=True)
-    
-    
-
-
 
     sim.setRealTimeSimulation(False)
     sim.setGravity(0, 0, -9.81)
-    # sim.setGravity(0, 0, 0)
-
-    # timeStepId = sim.addUserDebugParameter("timeStep", 0.001, 0.1, 0.01)
 
     Start_Simul = True
     while Start_Simul:
         sim.stepSimulation()
 
-        # timeStep = sim.readUserDebugParameter(timeStepId)
         sim.setTimeStep(control_dt)
-        # time.sleep(control_dt)
+
         thetas = []
         for param in debugparams:
            thetas.append(sim.readUserDebugParameter(param))
         
         if MODE == 'pos':
+            robotId = env.robot_id
             sim.resetJointState(robotId, joint_id_dict['joint1'], targetValue=thetas[0])
             sim.resetJointState(robotId, joint_id_dict['joint2'], targetValue=thetas[1])
             sim.resetJointState(robotId, joint_id_dict['joint3'], targetValue=thetas[2])
@@ -556,26 +476,5 @@ if __name__ == "__main__":
 
             sim.resetJointState(robotId, joint_id_dict['finger3_joint'], targetValue=thetas[13])
             sim.resetJointState(robotId, joint_id_dict['finger4_joint'], targetValue=-thetas[13])
-
-            # G_torque = getGravityCompensation(robotId)
-            # print(f'Gravity Compensation Torque = {G_torque}')
-
-            cur_joint_pos = []
-            # for i in range(3):
-            #     link_name = f'link{i+1}'
-            #     joint_pos = sim.getJointState(robotId, link_id_dict[link_name])[0]
-            #     cur_joint_pos.append(joint_pos)
-            # cur_joint_pos = np.array(cur_joint_pos)
-            # print(f'Gravity Compensation Torque = {getGravityCompensation(robotId)}')
-            # print(cur_joint_pos)
-
-
-        # time.sleep(control_dt)
-        keys = sim.getKeyboardEvents()
-
-        for k,v in keys.items():
-            if k==113 and (v & sim.KEY_WAS_TRIGGERED):
-                Start_Simul = False
-                sim.disconnect()
 
 
