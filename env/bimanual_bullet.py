@@ -141,7 +141,12 @@ class EnvBase(ABC):
     def get_ee_pose(self):
         left_ee_pos, left_ee_quat = get_link_pose(self.robot_id, self.robot.left_arm_joint_indices[-1])
         right_ee_pos, right_ee_quat = get_link_pose(self.robot_id, self.robot.right_arm_joint_indices[-1])
-        return np.array([list(left_ee_pos + left_ee_quat), list(right_ee_pos + right_ee_quat)])
+        return np.array([left_ee_pos + left_ee_quat, right_ee_pos + right_ee_quat])
+    
+    def get_tool_pose(self):
+        left_tool_pos, left_tool_quat = get_link_pose(self.robot_id, self.robot.left_tool_link)
+        right_tool_pos, right_tool_quat = get_link_pose(self.robot_id, self.robot.right_tool_link)
+        return np.array([left_tool_pos + left_tool_quat, right_tool_pos + right_tool_quat])
     
     def get_gripper_joint_position(self):
         left_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices))
@@ -189,13 +194,14 @@ class EnvBase(ABC):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q_orig)
         return is_collision
     
-    def solve_tool_ik(self, ee, left_or_right="left", max_attempts=5, check_collision=True):
+    def solve_tool_ik(self, tool_pose, left_or_right="left", max_attempts=5, check_collision=True):
         assert left_or_right in ["left", "right"], "left_or_right should be either 'left' or 'right'"
         q = self.get_joint_positions()
-        q_ik = self.robot.ik(ee, left_or_right, max_attempts=max_attempts)
+        q_ik = self.robot.ik(tool_pose, left_or_right, max_attempts=max_attempts)
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
         
         if q_ik is None:
+            print("No IK solution is found!!")
             return None
         
         if not check_collision:
@@ -209,6 +215,7 @@ class EnvBase(ABC):
             raise ValueError("left_or_right should be either 'left' or 'right'")
 
         if self.check_collision(q):
+            print("IK solution is in collision!!")
             return None
 
         return q_ik
@@ -240,7 +247,7 @@ class EnvBase(ABC):
             self.robot.arm_joint_indices,
             self.sim.POSITION_CONTROL,
             targetPositions=command.target_q,
-            positionGains=[0.1]*self.robot.num_arm_joints
+            positionGains=[0.2]*self.robot.num_arm_joints
         )
 
     def _set_gripper_command(self, command):
@@ -346,7 +353,7 @@ class PenholderEnv(EnvBase):
 
         # Cube
         holder_z = table_pos[2] + table_shape[2]/2
-        self.holder_pos = [table_pos[0]+0.1, -0.1, holder_z]
+        self.holder_pos = [table_pos[0], 0.0, holder_z]
         self.holder_quat = [0.0, 0.0, 0.0, 1.0]
         penholder_id = create_obj(path="assets/meshes/penholder_coacd.obj", color=GREEN)
         set_pose(penholder_id,(self.holder_pos, self.holder_quat))

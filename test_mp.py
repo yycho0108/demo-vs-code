@@ -43,8 +43,8 @@ if __name__ == "__main__":
     right_ee_pose[0] += 0.1
     right_ee_pose[2] += 0.1
 
-    command1 = mp.get_joint_command(left_ee_goal=left_ee_pose)
-    command2 = mp.get_joint_command(q_start=command1[-1].target_q, right_ee_goal=right_ee_pose)
+    command1 = mp.get_joint_command(left_tool_goal=left_ee_pose)
+    command2 = mp.get_joint_command(q_start=command1[-1].target_q, right_tool_goal=right_ee_pose)
     command = command1 + command2
 
     imgs = env.execute_command(command, render=True)

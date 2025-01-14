@@ -77,8 +77,8 @@ class MotionPlanner:
     def get_joint_command(
             self, 
             q_goal=None, 
-            left_ee_goal=None, 
-            right_ee_goal=None, 
+            left_tool_goal=None, 
+            right_tool_goal=None, 
             q_start=None, 
             open_gripper=None,
             timeout=1.0, 
@@ -98,23 +98,23 @@ class MotionPlanner:
         else:
             assert len(q_start) == self.num_joints, f"Given q_start {q_start} is not matched to num_joints {self.num_joints}"
         
-        assert q_goal is not None or left_ee_goal is not None or right_ee_goal is not None, "Either q_goal or ee_goal should be given."
+        assert q_goal is not None or left_tool_goal is not None or right_tool_goal is not None, "Either q_goal or tool_goal should be given."
         if q_goal is not None:
             assert len(q_goal) == self.num_joints, f"Given q_goal {q_goal} is not matched to num_joints {self.num_joints}"
         else:
             q_goal = q_start.copy()
-            if left_ee_goal is not None:
-                assert len(left_ee_goal) == 7, f"Given ee_goal {left_ee_goal} is not matched to 7"
-                left_q_goal = self.env.solve_tool_ik(left_ee_goal, "left")
+            if left_tool_goal is not None:
+                assert len(left_tool_goal) == 7, f"Given tool_goal {left_tool_goal} is not matched to 7"
+                left_q_goal = self.env.solve_tool_ik(left_tool_goal, "left")
                 if left_q_goal is None:
-                    print("No IK solution found for left_ee_goal!!")
+                    print("No IK solution found for left_tool_goal!!")
                     return []
                 q_goal[:self.num_joints//2] = left_q_goal
             
-            if right_ee_goal is not None:
-                right_q_goal = self.env.solve_tool_ik(right_ee_goal, "right")
+            if right_tool_goal is not None:
+                right_q_goal = self.env.solve_tool_ik(right_tool_goal, "right")
                 if right_q_goal is None:
-                    print("No IK solution found for right_ee_goal!!")
+                    print("No IK solution found for right_tool_goal!!")
                     return []
                 q_goal[self.num_joints//2:] = right_q_goal
 

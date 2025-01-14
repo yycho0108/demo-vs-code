@@ -25,19 +25,19 @@ if __name__ == "__main__":
     mp = MotionPlanner(env)
 
     env.reset()
-    left_ee_pose, right_ee_pose = env.get_ee_pose()
+    left_tool_pose, right_tool_pose = env.get_tool_pose()
     object_pose_dict = env.get_object_poses()
     cube_pose = object_pose_dict["cube"]
     
-    target_left_ee_pos = cube_pose[:3].copy()
-    target_left_ee_quat = (R.from_quat(left_ee_pose[3:]) * R.from_euler('z', -45, degrees=True)).as_quat()
-    target_left_ee_pose = np.concatenate([target_left_ee_pos, target_left_ee_quat])
+    target_left_tool_pos = cube_pose[:3].copy()
+    target_left_tool_quat = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', -45, degrees=True)).as_quat()
+    target_left_tool_pose = np.concatenate([target_left_tool_pos, target_left_tool_quat])
 
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*50
-    to_box_command = mp.get_joint_command(left_ee_goal=target_left_ee_pose, open_gripper=True)
+    to_box_command = mp.get_joint_command(left_tool_goal=target_left_tool_pose, open_gripper=True)
     gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*50
-    target_left_ee_pose[2] += 0.1
-    to_up_command = mp.get_joint_command(q_start=to_box_command[-1].target_q, left_ee_goal=target_left_ee_pose, open_gripper=False)
+    target_left_tool_pose[2] += 0.1
+    to_up_command = mp.get_joint_command(q_start=to_box_command[-1].target_q, left_tool_goal=target_left_tool_pose, open_gripper=False)
 
     command = gripper_open_command + to_box_command + gripper_close_command + to_up_command
     
