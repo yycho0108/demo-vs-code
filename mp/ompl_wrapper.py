@@ -84,8 +84,25 @@ class MotionPlanner:
             timeout=1.0, 
             simplify=True, 
             interpolation_res=0.01, 
-            attached_obj_name=None,
         ):
+        """
+        Do motion planning and get joint command for given 1) goal of joint positions, 2) goal of left tool 3) goal of right tool.
+        One of goal should be given.
+        
+        Args:
+            q_goal (np.ndarray): goal of joint positions (size 12) 
+            left_tool_goal (np.ndarray): goal pose of left tool (position (3) + quaternion (4)) 
+            right_tool_goal (np.ndarray): goal pose of right tool (position (3) + quaternion (4))
+            q_start (np.ndarray): start joint positions (size 12) or get current joint positions (optional)
+            open_gripper (bool): If True, open gripper during execution, If False, close gripper (optional)
+            timeout (float): maximum time to solve motion planning
+            simplify (bool): simplify initial solution such as shortcut, reduce vertices, smoothBSpline
+            interpolation_res (float): interpolation resolution of motion planning solution.
+
+        Returns:
+            commands (list): list of commands that contain target joint position and gripper open or close.
+
+        """
         q_orig = self.env.get_joint_positions()
 
         if open_gripper is not None:
@@ -121,11 +138,7 @@ class MotionPlanner:
         ss = og.SimpleSetup(self.space)
 
         # Set validate function (Reverse of collision function)
-        if attached_obj_name is None:
-            ss.setStateValidityChecker(ob.StateValidityCheckerFn(self.val_fn))
-        else:
-            attach_val_fn = self.env._get_attached_collision_fn(attached_obj_name)
-            ss.setStateValidityChecker(ob.StateValidityCheckerFn(attach_val_fn))
+        ss.setStateValidityChecker(ob.StateValidityCheckerFn(self.val_fn))
 
         # Set motion planning algorithm
         si = ss.getSpaceInformation()

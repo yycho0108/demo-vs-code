@@ -37,7 +37,7 @@ if __name__ == "__main__":
     target_left_tool_pose1 = np.concatenate([pen_pose[:3], [-0.03678786,  0.0999244 , -0.80908298 ,0.57796752]])
     target_left_tool_pose1[2] += 0.03
 
-    target_q_left1 = env.solve_tool_ik(target_left_tool_pose1)
+    target_q_left1 = env.solve_tool_ik(target_left_tool_pose1, left_or_right="left")
 
     target_q_1 = np.zeros(12)
     target_q_1[:6] = target_q_left1
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     target_left_tool_pos2[2] += 0.15
     target_left_tool_quat2 = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', -30, degrees=True)).as_quat()
     target_left_tool_pose2 = np.concatenate([target_left_tool_pos2, target_left_tool_quat2])
-    target_q_left2 = env.solve_tool_ik(target_left_tool_pose2)
+    target_q_left2 = env.solve_tool_ik(target_left_tool_pose2, left_or_right="left")
 
     target_q_2 = np.zeros(12)
     target_q_2[:6] = target_q_left2

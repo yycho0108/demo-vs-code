@@ -120,13 +120,41 @@ class EnvBase(ABC):
         pass
 
     def get_joint_positions(self):
+        """
+        Get current joint positions.
+
+        Args:
+
+        Returns:
+            q (np.ndarray): current joint positions (size 12)
+
+        """
         return np.array(get_joint_positions(self.robot_id, self.robot.arm_joint_indices))
     
     def set_joint_positions(self, q):
+        """
+        Set joint positions.
+
+        Args:
+            q (np.ndarray): joint positions to set (size 12)
+
+        Returns:
+
+        """
         assert len(q) == self.robot.num_arm_joints, f"Given q {q} is not matched to num_joints {self.robot.num_arm_joints}"
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
     
     def set_single_arm_joint_positions(self, q, left_or_right="left"):
+        """
+        Set joint positions.
+
+        Args:
+            q (np.ndarray): single arm joint positions to set (size 6)
+            left_or_right (str): "left" or "right" to set
+
+        Returns:
+
+        """
         assert left_or_right in ["left", "right"], "left_or_right should be either 'left' or 'right'"
         assert len(q) == self.robot.num_arm_joints//2, f"Given q {q} is not matched to num_joints {self.robot.num_arm_joints//2}"
         
@@ -139,21 +167,58 @@ class EnvBase(ABC):
         self.set_joint_positions(q_all)
     
     def get_ee_pose(self):
+        """
+        Get current pose of end-effector frame.
+
+        Args:
+
+        Returns:
+            pose (np.ndarray): pose of end-effector frame. (position (3) + quaternion (4))
+
+        """
         left_ee_pos, left_ee_quat = get_link_pose(self.robot_id, self.robot.left_arm_joint_indices[-1])
         right_ee_pos, right_ee_quat = get_link_pose(self.robot_id, self.robot.right_arm_joint_indices[-1])
         return np.array([left_ee_pos + left_ee_quat, right_ee_pos + right_ee_quat])
     
     def get_tool_pose(self):
+        """
+        Get current pose of tool frame.
+
+        Args:
+
+        Returns:
+            pose (np.ndarray): pose of tool frame. (position (3) + quaternion (4))
+
+        """
         left_tool_pos, left_tool_quat = get_link_pose(self.robot_id, self.robot.left_tool_link)
         right_tool_pos, right_tool_quat = get_link_pose(self.robot_id, self.robot.right_tool_link)
         return np.array([left_tool_pos + left_tool_quat, right_tool_pos + right_tool_quat])
     
     def get_gripper_joint_position(self):
+        """
+        Get current gripper joint position.
+
+        Args:
+
+        Returns:
+            left_finger_pos (np.ndarray): left gripper joint position (size 2)
+            right_finger_pos (np.ndarray): right gripper joint position (size 2)
+
+        """
         left_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices))
         right_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.right_gripper_joint_indices))
         return left_finger_pos, right_finger_pos
 
     def get_gripper_opened(self):
+        """
+        Get current gripper opened.
+
+        Args:
+
+        Returns:
+            gripper_opened (np.ndarray): boolean of left and right gripper open or not (size 2)
+
+        """
         left_finger_pos, right_finger_pos = self.get_gripper_joint_position()
         is_left_opened = np.diff(left_finger_pos) > (self.robot.left_gripper_joint_limits[1][1] - self.robot.left_gripper_joint_limits[0][0])/2
         is_right_opened = np.diff(right_finger_pos) > (self.robot.right_gripper_joint_limits[1][1] - self.robot.right_gripper_joint_limits[0][0])/2
@@ -161,6 +226,15 @@ class EnvBase(ABC):
         return np.concatenate([is_left_opened, is_right_opened])
     
     def set_gripper_open(self, left_or_right="left"):
+        """
+        Set gripper open.
+
+        Args:
+
+        Returns:
+            left_or_right (str): left or right gripper.
+
+        """
         if left_or_right == "left":
             set_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices, self.robot.left_gripper_open_pos)
         elif left_or_right == "right":
@@ -169,6 +243,15 @@ class EnvBase(ABC):
             raise ValueError("left_or_right should be either 'left' or 'right'")
         
     def set_gripper_close(self, left_or_right="left"):
+        """
+        Set gripper close.
+
+        Args:
+
+        Returns:
+            left_or_right (str): left or right gripper.
+
+        """
         if left_or_right == "left":
             set_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices, self.robot.left_gripper_close_pos)
         elif left_or_right == "right":
@@ -177,6 +260,15 @@ class EnvBase(ABC):
             raise ValueError("left_or_right should be either 'left' or 'right'")
     
     def get_object_poses(self):
+        """
+        Get object poses.
+
+        Args:
+
+        Returns:
+            pose_dict (dict): dictionary of object name (str) and its pose (np.ndarray: position (3) + quaternion (4))
+
+        """
         pose_dict = {}
         for obj_name, obj_id in self.obj_ids.items():
             pos, quat = get_pose(obj_id)
@@ -184,6 +276,16 @@ class EnvBase(ABC):
         return pose_dict
     
     def check_collision(self, q):
+        """
+        Check collision for given joint positions.
+
+        Args:
+            q (np.ndarray): joint positions to check (size 12)
+
+        Returns:
+            is_collision (bool): True if collision. False if not.
+
+        """
         q_orig = get_joint_positions(self.robot_id, self.robot.arm_joint_indices)
         is_collision = get_collision_fn(
             body=self.robot_id,
@@ -195,6 +297,19 @@ class EnvBase(ABC):
         return is_collision
     
     def solve_tool_ik(self, tool_pose, left_or_right="left", max_attempts=5, check_collision=True):
+        """
+        Solve inverse kinematics (IK) for given tool pose.
+
+        Args:
+            tool_pose (np.ndarray): tool pose (position (3) + quaternion (4)) to solve IK.
+            left_or_right (str): which arm to solve IK among "left" and "right".
+            max_attempts (int): (optional) max attempts to solve IK.
+            check_collision (bool): (optional) check collision for solved IK or not.
+            
+        Returns:
+            q (np.ndarray): solution of IK (size 6)
+
+        """
         assert left_or_right in ["left", "right"], "left_or_right should be either 'left' or 'right'"
         q = self.get_joint_positions()
         q_ik = self.robot.ik(tool_pose, left_or_right, max_attempts=max_attempts)
@@ -280,6 +395,17 @@ class EnvBase(ABC):
             )
 
     def execute_command(self, command, render=False):
+        """
+        Simulate the robot for given commands.
+        
+        Args:
+            command (list[Command]): list of command to execute the robot.
+            render (bool): render images or not.
+
+        Returns:
+            imgs (list): list of images (empty if render is False)
+
+        """
         imgs = []
         for i in range(len(command)):
             for _ in range(self.ctrl_step):
