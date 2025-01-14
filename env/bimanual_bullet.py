@@ -288,6 +288,8 @@ class EnvBase(ABC):
                 self.sim.stepSimulation()
             if render:
                 imgs.append(self.render())
+            else:
+                time.sleep(0.01)
 
         return imgs
 

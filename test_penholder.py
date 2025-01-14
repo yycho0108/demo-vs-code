@@ -62,5 +62,5 @@ if __name__ == "__main__":
 
     command = gripper_open_command + to_box_command + gripper_close_command + to_up_command
     
-    imgs = env.execute_command(command, render=True)
-    print('success: ', env.check_success())
+    imgs = env.execute_command(command, render=False)
+    # print('success: ', env.check_success())
