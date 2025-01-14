@@ -381,14 +381,47 @@ class PenholderEnv(EnvBase):
         self.obj_ids["pen"] = pen_id
 
     def check_success(self):
-        pen_pose = get_pose(self.obj_ids["pen"])
-        holder_pose = get_pose(self.obj_ids["holder"])
-        return np.linalg.norm(holder_pose[:2] - pen_pose[:2]) < 0.03 and holder_pose[2] < 0.1
+        pen_pos = np.array(get_pose(self.obj_ids["pen"])[0])
+        holder_pos = np.array(get_pose(self.obj_ids["holder"])[0])
+        
+        return np.linalg.norm(holder_pos[:2] - pen_pos[:2]) < 0.03 and holder_pos[2] < 0.8
 
     def reset(self):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
         set_pose(self.obj_ids["holder"], (self.holder_pos, self.holder_quat))
         set_pose(self.obj_ids["pen"],(self.pen_pos, self.pen_quat))
+
+class CurlingEnv(EnvBase):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.loadEnv()
+
+    def loadEnv(self):
+        # Table
+        table_shape = [2.0, 0.6, 0.4]
+        table_pos = [1.1, 0.3, 0.2]
+        table_quat = [0.0, 0.0, 0.0, 1.0]
+        table_id = create_box(*table_shape, color=GREY)
+        set_pose(table_id,(table_pos, table_quat))
+        self.obs_ids["table"] = table_id
+
+        # Curling
+        curling_z = table_pos[2] + table_shape[2]/2
+        self.curling_pos = [0.3, 0.3, curling_z]
+        self.curling_quat = [0, 0, 0.7071068, 0.7071068]
+        curling_id = create_obj(scale=1.5, mass=1.0, path="assets/meshes/curling_coacd.obj", color=BLUE)
+        set_pose(curling_id,(self.curling_pos, self.curling_quat))
+        self.obj_ids["curling"] = curling_id
+
+        self.goal_pos = np.array([1.5, 0.3, 0.4])
+
+    def check_success(self):
+        curling_pos = get_pose(self.obj_ids["curling"])[0]
+        return np.linalg.norm(curling_pos - self.goal_pos) < 0.2
+    
+    def reset(self):
+        set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
+        set_pose(self.obj_ids["curling"], (self.curling_pos, self.curling_quat))
     
 if __name__ == "__main__":
 
@@ -428,7 +461,6 @@ if __name__ == "__main__":
         print(link_name, joint_name, _id)
 
     control_dt = 1./100
-    # Control Frequency
     sim.setTimestep = control_dt
 
     
@@ -436,8 +468,7 @@ if __name__ == "__main__":
     MODE = 'pos' # 'jp' or 'pos' or 'sinusoidal' or 'inv_dyn'
 
     if MODE == 'pos':
-        init_q = np.array([-0.336, -0.056, -0.252, 0.405, 0.0, 0.0])
-        init_ee_pose = np.array([3.05173844e-01, 1.32409513e-01, 6.22422099e-01, -2.15557497e-02, 7.86278248e-02, -8.11488986e-01, 5.78652442e-01])
+        init_q = np.zeros(6)
         for i in range(6):
             debugparams.append(sim.addUserDebugParameter(f"theta_{i+1}",L_JOINT_LIMIT_MIN[i],L_JOINT_LIMIT_MAX[i],init_q[i]))
         
@@ -447,9 +478,6 @@ if __name__ == "__main__":
         debugparams.append(sim.addUserDebugParameter(f"left_finger", -45.*np.pi/180., 0, -45.*np.pi/180.))
         debugparams.append(sim.addUserDebugParameter(f"right_finger", -45.*np.pi/180., 0, -45.*np.pi/180.))
             
-    
-
-    
 
     sim.setRealTimeSimulation(False)
     sim.setGravity(0, 0, -9.81)
