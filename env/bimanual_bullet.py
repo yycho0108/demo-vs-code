@@ -253,29 +253,29 @@ class EnvBase(ABC):
     def _set_gripper_command(self, command):
         if command.left_gripper_open is not None:
             if command.left_gripper_open:
-                target_left_gripper_vel = self.robot.left_gripper_open_pos
+                target_left_gripper_pos = self.robot.left_gripper_open_pos
             else:
-                target_left_gripper_vel = self.robot.left_gripper_close_pos
+                target_left_gripper_pos = self.robot.left_gripper_close_pos
 
             self.sim.setJointMotorControlArray(
                 self.robot_id, 
                 self.robot.left_gripper_joint_indices, 
                 self.sim.POSITION_CONTROL,
-                targetPositions=target_left_gripper_vel,
+                targetPositions=target_left_gripper_pos,
                 positionGains=[0.02]*2,
             )
 
         if command.right_gripper_open is not None:
             if command.right_gripper_open:
-                target_right_gripper_vel = self.robot.right_gripper_open_pos
+                target_right_gripper_pos = self.robot.right_gripper_open_pos
             else:
-                target_right_gripper_vel = self.robot.right_gripper_close_pos
+                target_right_gripper_pos = self.robot.right_gripper_close_pos
 
             self.sim.setJointMotorControlArray(
                 self.robot_id, 
                 self.robot.right_gripper_joint_indices, 
                 self.sim.POSITION_CONTROL,
-                targetPositions=target_right_gripper_vel,
+                targetPositions=target_right_gripper_pos,
                 positionGains=[0.02]*2,
             )
 
