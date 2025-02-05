@@ -82,20 +82,27 @@ class EnvBase(ABC):
         self.robot_id = None
         self.obs_ids = {}
         self.obj_ids = {}
+        self.debug_ids = []
         self._load_plane_and_robot(cfg)
         self._set_render_cfg(cfg["render"])
 
     def _load_plane_and_robot(self, cfg):
-        self.sim = bullet_client.BulletClient(connection_mode=pybullet.GUI)
+        # Set cfg
+        self.gui = cfg["gui"]
+        self.sim_hz = cfg["sim_hz"]
+        self.ctrl_step = cfg["sim_hz"] // cfg["control_hz"]
+        self.dt = 1 / self.sim_hz
+
+        if self.gui:
+            connection_mode = pybullet.GUI
+        else:
+            connection_mode = pybullet.DIRECT
+
+        self.sim = bullet_client.BulletClient(connection_mode=connection_mode)
         self.sim.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # Set gravity
         self.sim.setGravity(0, 0, -9.81)
-
-        # Set dt
-        self.sim_hz = cfg["sim_hz"]
-        self.ctrl_step = cfg["sim_hz"] // cfg["control_hz"]
-        self.dt = 1 / self.sim_hz
         self.sim.setTimeStep(self.dt)
 
         # Plane
@@ -436,6 +443,57 @@ class EnvBase(ABC):
         img = self.sim.getCameraImage(self.width, self.height, self.view_matrix, self.projection_matrix)
         rgb = np.reshape(img[2], (self.height, self.width, 4))[:, :, :3]  # Extract RGB data
         return rgb
+
+    def clear_vis(self):
+        """
+        Remove all visualization items.
+
+        Args:
+
+        Returns:
+
+        """
+
+        for id in self.debug_ids:
+            self.sim.removeBody(id)
+
+        self.debug_ids = []
+
+        # self.sim.removeAllUserParameters()
+
+    def draw_points(self, positions, colors=None, size=0.01):
+        """
+        Draw points in a simulation.
+
+        Args:
+            positions (np.ndarray): positions of points (3 or N x 3)
+            colors (np.ndarray): colors (0 ~ 1) of points (N x 3)
+            size (float): size of points
+
+        Returns:
+
+        """
+
+        assert positions.shape[-1] == 3, "Invalid shape of positions"
+
+        if positions.ndim == 1:
+            positions = np.expand_dims(positions, axis=0)
+
+        if colors is None:
+            colors = np.zeros((positions.shape[0], 4))
+            colors[:,0] = 1
+            colors[:,3] = 1
+
+        for pos, color in zip(positions, colors):
+            id = create_sphere(radius=size, color=color, collision=False)
+            set_position(id, pos[0], pos[1], pos[2])
+            self.debug_ids.append(id)
+
+        # self.sim.addUserDebugPoints(
+        #     pointPositions=positions, 
+        #     pointColorsRGB=colors, 
+        #     pointSize=size,
+        # )
 
 
 class PickCubeEnv(EnvBase):

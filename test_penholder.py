@@ -6,6 +6,7 @@ from scipy.spatial.transform import Rotation as R
 
 if __name__ == "__main__":
     cfg = {
+        "gui": True,
         "sim_hz": 240,
         "control_hz": 240,
         "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],

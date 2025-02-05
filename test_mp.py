@@ -4,6 +4,7 @@ from mp.ompl_wrapper import MotionPlanner, Command
 
 if __name__ == "__main__":
     cfg = {
+        "gui": True,
         "sim_hz": 240,
         "control_hz": 10,
         "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
