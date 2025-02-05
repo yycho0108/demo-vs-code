@@ -175,9 +175,11 @@ class MotionPlanner:
         ss.setStartAndGoalStates(q0, qG)
 
         # Solve
-        if not ss.solve(timeout):
+        result = ss.solve(timeout)
+        if not result:
             # No solution found. Return empty list
-            print("No motion planning solution found!!")
+            print("!!!!!!!!!!!!NO MOTION PLANNING SOLUTION FOUND!!!!!!!!!!!!")
+            print(f"!!!!!!!!!!!!REASON: {result.asString()}!!!!!!!!!!!!")
             return []
 
         # Simplify solution such as shortcut, reduce vertices, smoothBSpline,

@@ -35,6 +35,7 @@ if __name__ == "__main__":
     pen_pose = object_pose_dict["pen"]
     holder_pose = object_pose_dict["holder"]
 
+    # Solve IK for pre-defined poses
     grasp_left_tool_pose = np.concatenate([pen_pose[:3], left_tool_pose[3:]])
     z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
     for z_rot in z_rot_candidates:
@@ -70,6 +71,7 @@ if __name__ == "__main__":
     else:
         raise ValueError("No valid up pose found")
 
+    # Do motion planning
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
 
     q_goal = np.concatenate([grasp_q_left, env.get_joint_positions()[6:]])
@@ -85,6 +87,6 @@ if __name__ == "__main__":
 
     command = gripper_open_command + to_box_command + gripper_close_command + to_up_grasp_command + to_up_holder_command + gripper_open_command
     
-    imgs = env.execute_command(command, render=False)
+    imgs = env.execute_command(command, render=False, num_steps_after=100)
     
     print('success: ', env.check_success())

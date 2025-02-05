@@ -34,13 +34,9 @@ if __name__ == "__main__":
     object_pose_dict = env.get_object_poses()
     curling_pose = object_pose_dict["curling"]
 
-    grasp_pos = curling_pose[:3].copy()
-    grasp_pos[2] += 0.18
-
-    env.draw_points(grasp_pos, radius=0.02)
-    env.draw_frame(left_tool_pose)
-
-    target_left_tool_pose_approach = np.concatenate([grasp_pos, left_tool_pose[3:]])
+    # Solve IK for pre-defined poses
+    target_left_tool_pose_approach = np.concatenate([curling_pose[:3], left_tool_pose[3:]])
+    target_left_tool_pose_approach[2] += 0.18
     target_left_tool_pose_approach[0] += -0.05
     z_rot_candidates = np.linspace(0, -np.pi/4, 10)
     for z_rot in z_rot_candidates:
@@ -52,7 +48,8 @@ if __name__ == "__main__":
     else:
         raise ValueError("No valid approach pose found")
 
-    target_left_tool_pose_pre_push = np.concatenate([grasp_pos, left_tool_pose[3:]])
+    target_left_tool_pose_pre_push = np.concatenate([curling_pose[:3], left_tool_pose[3:]])
+    target_left_tool_pose_pre_push[2] += 0.18
     z_rot_candidates = np.linspace(0, -np.pi/4, 10)
     for z_rot in z_rot_candidates:
         target_left_tool_pose_pre_push[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
@@ -75,23 +72,16 @@ if __name__ == "__main__":
     else:
         raise ValueError("No valid post-push pose found")
 
-    gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*50
-
-    # q_goal = np.concatenate([q_approach, env.get_joint_positions()[6:]])
-    # to_approach_command = mp.get_joint_command(
-    #     q_goal=q_goal, 
-    #     open_gripper=True,
-    # )
-    # if to_approach_command:
-    #     raise ValueError("No valid approach trajectory found")
+    # Do motion planning
+    gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
  
     q_goal = np.concatenate([q_pre_push, env.get_joint_positions()[6:]])
     to_pre_push_command = mp.get_joint_command(
-        # q_start=to_approach_command[-1].target_q,
+        open_gripper_start=True,
         q_goal=q_goal, 
         open_gripper=True,
         interpolation_res=0.02,
-        check_collision=False,
+        check_collision=True,
     )
     if not to_pre_push_command:
         raise ValueError("No valid pre-push trajectory found")
@@ -99,6 +89,7 @@ if __name__ == "__main__":
     q_goal = np.concatenate([q_post_push, env.get_joint_positions()[6:]])
     to_post_push_command = mp.get_joint_command(
         q_start=to_pre_push_command[-1].target_q, 
+        open_gripper_start=True, 
         q_goal=q_goal, 
         open_gripper=True,
         interpolation_res=0.1,

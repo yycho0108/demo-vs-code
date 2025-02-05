@@ -7,6 +7,7 @@ import numpy as np
 import pybullet
 import time
 from scipy.spatial.transform import Rotation as R
+from tqdm import tqdm
 
 
 import sys
@@ -456,7 +457,7 @@ class EnvBase(ABC):
 
         """
         imgs = []
-        for i in range(len(command)):
+        for i in tqdm(range(len(command))):
             for _ in range(self.ctrl_step):
                 self._set_target_joint_position(command[i])
                 self._set_gripper_command(command[i])
