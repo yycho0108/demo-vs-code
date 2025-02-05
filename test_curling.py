@@ -6,9 +6,10 @@ from scipy.spatial.transform import Rotation as R
 
 if __name__ == "__main__":
     cfg = {
+        "seed": 42,
         "gui": True,
         "sim_hz": 240,
-        "control_hz": 240,
+        "control_hz": 20,
         "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         "render": {
             "width": 640,
@@ -19,35 +20,94 @@ if __name__ == "__main__":
                 "up": [0, 0, 1],
                 "fov": 60,
             }
-        }
+        },
+        "ctrl": {
+            "gripper_gain": 0.05,
+        },
     }
 
     env = CurlingEnv(cfg)
     mp = MotionPlanner(env)
 
     env.reset()
-    left_ee_pose, right_ee_pose = env.get_ee_pose()
+    left_tool_pose, right_tool_pose = env.get_tool_pose()
     object_pose_dict = env.get_object_poses()
     curling_pose = object_pose_dict["curling"]
 
     grasp_pos = curling_pose[:3].copy()
-    grasp_pos[2] += 0.15
+    grasp_pos[2] += 0.18
 
-    env.draw_points(grasp_pos, size=20)
+    env.draw_points(grasp_pos, radius=0.02)
+    env.draw_frame(left_tool_pose)
+
+    target_left_tool_pose_approach = np.concatenate([grasp_pos, left_tool_pose[3:]])
+    target_left_tool_pose_approach[0] += -0.05
+    z_rot_candidates = np.linspace(0, -np.pi/4, 10)
+    for z_rot in z_rot_candidates:
+        target_left_tool_pose_approach[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
+        env.draw_frame(target_left_tool_pose_approach)
+        q_approach = env.solve_tool_ik(target_left_tool_pose_approach, "left", check_collision=True)
+        if q_approach is not None:
+            break
+    else:
+        raise ValueError("No valid approach pose found")
+
+    target_left_tool_pose_pre_push = np.concatenate([grasp_pos, left_tool_pose[3:]])
+    z_rot_candidates = np.linspace(0, -np.pi/4, 10)
+    for z_rot in z_rot_candidates:
+        target_left_tool_pose_pre_push[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
+        env.draw_frame(target_left_tool_pose_pre_push)
+        q_pre_push = env.solve_tool_ik(target_left_tool_pose_pre_push, "left", check_collision=True)
+        if q_pre_push is not None:
+            break
+    else:
+        raise ValueError("No valid pre-push pose found")
     
-    target_left_tool_pose = np.array([7.47078806e-02,  2.79245913e-01,  6.21249437e-01, -6.61014095e-02,  1.31183490e-01, -6.77508175e-01, 7.20697045e-01])
-    # target_q = np.array([0.294, -0.165, 0.369, -0.124, 0.0, -0.253])
-
-    # env.set_single_arm_joint_positions(target_q)
-    # print(env.get_ee_pose()[0])
+    target_left_tool_pose_post_push = target_left_tool_pose_pre_push.copy()
+    target_left_tool_pose_post_push[0] += 0.1
+    z_rot_candidates = np.linspace(0, -np.pi/4, 10)
+    for z_rot in z_rot_candidates:
+        target_left_tool_pose_post_push[3:] = (R.from_quat(target_left_tool_pose_post_push[3:]) * R.from_euler('z', z_rot)).as_quat()
+        env.draw_frame(target_left_tool_pose_post_push)
+        q_post_push = env.solve_tool_ik(target_left_tool_pose_post_push, "left", check_collision=False)
+        if q_post_push is not None:
+            break
+    else:
+        raise ValueError("No valid post-push pose found")
 
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*50
-    to_box_command = mp.get_joint_command(left_tool_goal=target_left_tool_pose, open_gripper=True)
-    gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*50
-    target_left_tool_pose[1] += 0.1
-    to_up_command = mp.get_joint_command(q_start=to_box_command[-1].target_q, left_tool_goal=target_left_tool_pose, open_gripper=False)
 
-    command = gripper_open_command + to_box_command + gripper_close_command + to_up_command + gripper_open_command
+    # q_goal = np.concatenate([q_approach, env.get_joint_positions()[6:]])
+    # to_approach_command = mp.get_joint_command(
+    #     q_goal=q_goal, 
+    #     open_gripper=True,
+    # )
+    # if to_approach_command:
+    #     raise ValueError("No valid approach trajectory found")
+ 
+    q_goal = np.concatenate([q_pre_push, env.get_joint_positions()[6:]])
+    to_pre_push_command = mp.get_joint_command(
+        # q_start=to_approach_command[-1].target_q,
+        q_goal=q_goal, 
+        open_gripper=True,
+        interpolation_res=0.02,
+        check_collision=False,
+    )
+    if not to_pre_push_command:
+        raise ValueError("No valid pre-push trajectory found")
+
+    q_goal = np.concatenate([q_post_push, env.get_joint_positions()[6:]])
+    to_post_push_command = mp.get_joint_command(
+        q_start=to_pre_push_command[-1].target_q, 
+        q_goal=q_goal, 
+        open_gripper=True,
+        interpolation_res=0.1,
+        check_collision=False,
+    )
+    if not to_post_push_command:
+        raise ValueError("No valid post-push trajectory found")
+
+    command = to_pre_push_command + to_post_push_command
     
-    imgs = env.execute_command(command, render=True)
+    imgs = env.execute_command(command, render=False, num_steps_after=300)
     print('success: ', env.check_success())

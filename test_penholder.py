@@ -6,9 +6,10 @@ from scipy.spatial.transform import Rotation as R
 
 if __name__ == "__main__":
     cfg = {
+        "seed": 42,
         "gui": True,
         "sim_hz": 240,
-        "control_hz": 240,
+        "control_hz": 20,
         "q_init": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         "render": {
             "width": 640,
@@ -19,7 +20,10 @@ if __name__ == "__main__":
                 "up": [0, 0, 1],
                 "fov": 60,
             }
-        }
+        },
+        "ctrl": {
+            "gripper_gain": 0.03,
+        },
     }
 
     env = PenholderEnv(cfg)
@@ -30,38 +34,57 @@ if __name__ == "__main__":
     object_pose_dict = env.get_object_poses()
     pen_pose = object_pose_dict["pen"]
     holder_pose = object_pose_dict["holder"]
+
+    grasp_left_tool_pose = np.concatenate([pen_pose[:3], left_tool_pose[3:]])
+    z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
+    for z_rot in z_rot_candidates:
+        grasp_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
+        env.draw_frame(grasp_left_tool_pose)
+        grasp_q_left = env.solve_tool_ik(grasp_left_tool_pose, "left", check_collision=True)
+        if grasp_q_left is not None:
+            break
+    else:
+        raise ValueError("No valid grasp pose found")
     
-    # target_left_ee_pos = pen_pose[:3].copy()-[0.05, 0., 0.]
-    # target_left_ee_quat = (R.from_quat(left_ee_pose[3:]) * R.from_euler('z', -30, degrees=True)).as_quat()
-    # target_left_ee_pose = np.concatenate([target_left_ee_pos, target_left_ee_quat])
+    up_grasp_left_tool_pose = np.concatenate([pen_pose[:3], left_tool_pose[3:]])
+    up_grasp_left_tool_pose[2] += 0.15
+    z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
+    for z_rot in z_rot_candidates:
+        up_grasp_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
+        env.draw_frame(up_grasp_left_tool_pose)
+        up_grasp_q_left = env.solve_tool_ik(up_grasp_left_tool_pose, "left", check_collision=True)
+        if up_grasp_q_left is not None:
+            break
+    else:
+        raise ValueError("No valid up pose found")
+    
+    up_holder_left_tool_pose = np.concatenate([holder_pose[:3], left_tool_pose[3:]])
+    up_holder_left_tool_pose[2] += 0.19
+    z_rot_candidates = np.linspace(-np.pi, 0, 10)
+    for z_rot in z_rot_candidates:
+        up_holder_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
+        env.draw_frame(up_holder_left_tool_pose)
+        up_holder_q_left = env.solve_tool_ik(up_holder_left_tool_pose, "left", check_collision=True)
+        if up_holder_q_left is not None:
+            break
+    else:
+        raise ValueError("No valid up pose found")
 
-    target_left_tool_pose1 = np.concatenate([pen_pose[:3], [-0.03678786,  0.0999244 , -0.80908298 ,0.57796752]])
-    target_left_tool_pose1[2] += 0.03
+    gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
 
-    target_q_left1 = env.solve_tool_ik(target_left_tool_pose1, left_or_right="left")
+    q_goal = np.concatenate([grasp_q_left, env.get_joint_positions()[6:]])
+    to_box_command = mp.get_joint_command(open_gripper_start=True, q_goal=q_goal, open_gripper=True)
 
-    target_q_1 = np.zeros(12)
-    target_q_1[:6] = target_q_left1
+    gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*20
+    
+    q_goal = np.concatenate([up_grasp_q_left, env.get_joint_positions()[6:]])
+    to_up_grasp_command = mp.get_joint_command(q_start=to_box_command[-1].target_q, open_gripper_start=False, q_goal=q_goal, open_gripper=False, check_collision=False)
 
-    target_left_tool_pos2 = object_pose_dict["holder"][:3].copy()
-    target_left_tool_pos2[2] += 0.15
-    target_left_tool_quat2 = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', -30, degrees=True)).as_quat()
-    target_left_tool_pose2 = np.concatenate([target_left_tool_pos2, target_left_tool_quat2])
-    target_q_left2 = env.solve_tool_ik(target_left_tool_pose2, left_or_right="left")
+    q_goal = np.concatenate([up_holder_q_left, env.get_joint_positions()[6:]])
+    to_up_holder_command = mp.get_joint_command(q_start=to_up_grasp_command[-1].target_q, open_gripper_start=False, q_goal=q_goal, open_gripper=False, check_collision=False)
 
-    target_q_2 = np.zeros(12)
-    target_q_2[:6] = target_q_left2
-    # target_q = np.array([-0.336, -0.056, -0.276, 0.482, 0.0, 0.0])
-
-    # env.set_single_arm_joint_positions(target_q)
-    # print(env.get_ee_pose()[0])
-
-    gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*50
-    to_box_command = mp.get_joint_command(q_goal=target_q_1, open_gripper=True)
-    gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*150
-    to_up_command = mp.get_joint_command(q_start=to_box_command[-1].target_q, q_goal=target_q_2, open_gripper=False)
-
-    command = gripper_open_command + to_box_command + gripper_close_command + to_up_command
+    command = gripper_open_command + to_box_command + gripper_close_command + to_up_grasp_command + to_up_holder_command + gripper_open_command
     
     imgs = env.execute_command(command, render=False)
-    # print('success: ', env.check_success())
+    
+    print('success: ', env.check_success())

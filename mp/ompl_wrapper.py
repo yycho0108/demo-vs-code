@@ -5,6 +5,7 @@ from pybullet_planning.pybullet_tools.utils import *
 
 from ompl import base as ob
 from ompl import geometric as og
+from ompl import util as ou
 
 
 @dataclass
@@ -61,6 +62,9 @@ class MotionPlanner:
 
 
     def _init_ompl(self):
+        # Set random seed
+        ou.RNG.setSeed(self.env.seed)
+
         # Set up configuration space
         self.space = PbStateSpace(self.num_joints)
 
@@ -80,10 +84,12 @@ class MotionPlanner:
             left_tool_goal=None, 
             right_tool_goal=None, 
             q_start=None, 
+            open_gripper_start=None,
             open_gripper=None,
             timeout=1.0, 
             simplify=True, 
-            interpolation_res=0.01, 
+            interpolation_res=0.02, 
+            check_collision=True,
         ):
         """
         Do motion planning and get joint command for given 1) goal of joint positions, 2) goal of left tool 3) goal of right tool.
@@ -94,16 +100,26 @@ class MotionPlanner:
             left_tool_goal (np.ndarray): goal pose of left tool (position (3) + quaternion (4)) 
             right_tool_goal (np.ndarray): goal pose of right tool (position (3) + quaternion (4))
             q_start (np.ndarray): start joint positions (size 12) or get current joint positions (optional)
+            open_gripper_start (bool): If True, gripper is opened at start, If False, gripper is closed at start (optional)
             open_gripper (bool): If True, open gripper during execution, If False, close gripper (optional)
             timeout (float): maximum time to solve motion planning
             simplify (bool): simplify initial solution such as shortcut, reduce vertices, smoothBSpline
             interpolation_res (float): interpolation resolution of motion planning solution.
+            check_collision (bool): If True, check collision during motion planning. If False, ignore collision.
 
         Returns:
             commands (list): list of commands that contain target joint position and gripper open or close.
 
         """
         q_orig = self.env.get_joint_positions()
+
+        if open_gripper_start is not None:
+            if open_gripper_start:
+                self.env.set_gripper_open("left")
+                self.env.set_gripper_open("right")
+            else:
+                self.env.set_gripper_close("left")
+                self.env.set_gripper_close("right")
 
         if open_gripper is not None:
             gripper_command = [open_gripper, open_gripper]
@@ -122,14 +138,14 @@ class MotionPlanner:
             q_goal = q_start.copy()
             if left_tool_goal is not None:
                 assert len(left_tool_goal) == 7, f"Given tool_goal {left_tool_goal} is not matched to 7"
-                left_q_goal = self.env.solve_tool_ik(left_tool_goal, "left")
+                left_q_goal = self.env.solve_tool_ik(left_tool_goal, "left", check_collision=check_collision)
                 if left_q_goal is None:
                     print("No IK solution found for left_tool_goal!!")
                     return []
                 q_goal[:self.num_joints//2] = left_q_goal
             
             if right_tool_goal is not None:
-                right_q_goal = self.env.solve_tool_ik(right_tool_goal, "right")
+                right_q_goal = self.env.solve_tool_ik(right_tool_goal, "right", check_collision=check_collision)
                 if right_q_goal is None:
                     print("No IK solution found for right_tool_goal!!")
                     return []
@@ -138,11 +154,16 @@ class MotionPlanner:
         ss = og.SimpleSetup(self.space)
 
         # Set validate function (Reverse of collision function)
-        ss.setStateValidityChecker(ob.StateValidityCheckerFn(self.val_fn))
+        if check_collision:
+            val_fn = self.val_fn
+        else:
+            val_fn = lambda state: True
+
+        ss.setStateValidityChecker(ob.StateValidityCheckerFn(val_fn))
 
         # Set motion planning algorithm
         si = ss.getSpaceInformation()
-        si.setStateValidityCheckingResolution(0.0025)
+        si.setStateValidityCheckingResolution(0.001)
         ss.setPlanner(og.RRTConnect(si))
 
         # Set start and goal state

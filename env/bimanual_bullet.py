@@ -6,7 +6,8 @@ import pybullet_data
 import numpy as np
 import pybullet
 import time
-import numpy
+from scipy.spatial.transform import Rotation as R
+
 
 import sys
 from pathlib import Path
@@ -75,6 +76,36 @@ def get_validate_fn(body, joints, obstacles=[], attachments=[], self_collisions=
         return True
     return validate_fn
 
+def create_frame(radius=0.005, height=0.1):
+    x = create_cylinder(radius=radius, height=height, color=RED, collision=False)
+    y = create_cylinder(radius=radius, height=height, color=GREEN, collision=False)
+    z = create_cylinder(radius=radius, height=height, color=BLUE, collision=False)
+    return x, y, z
+
+def get_axes_poses(pose, height):
+    x_pose = p.multiplyTransforms(
+        positionA=pose[:3],
+        orientationA=pose[3:],
+        positionB=np.array([height/2,0,0]),
+        orientationB=R.from_rotvec([0,np.pi/2,0]).as_quat(),
+    )
+
+    y_pose = p.multiplyTransforms(
+        positionA=pose[:3],
+        orientationA=pose[3:],
+        positionB=np.array([0,height/2,0]),
+        orientationB=R.from_rotvec([-np.pi/2,0,0]).as_quat(),
+    )
+
+    z_pose = p.multiplyTransforms(
+        positionA=pose[:3],
+        orientationA=pose[3:],
+        positionB=np.array([0,0,height/2]),
+        orientationB=np.array([0,0,0,1]),
+    )
+    
+    return x_pose, y_pose, z_pose
+
 
 class EnvBase(ABC):
     def __init__(self, cfg):
@@ -83,8 +114,13 @@ class EnvBase(ABC):
         self.obs_ids = {}
         self.obj_ids = {}
         self.debug_ids = []
+        self.set_seed(cfg["seed"])
         self._load_plane_and_robot(cfg)
         self._set_render_cfg(cfg["render"])
+
+    def set_seed(self, seed):
+        self.seed = seed
+        np.random.seed(self.seed)
 
     def _load_plane_and_robot(self, cfg):
         # Set cfg
@@ -92,6 +128,7 @@ class EnvBase(ABC):
         self.sim_hz = cfg["sim_hz"]
         self.ctrl_step = cfg["sim_hz"] // cfg["control_hz"]
         self.dt = 1 / self.sim_hz
+        self.gripper_gain = cfg["ctrl"]["gripper_gain"]
 
         if self.gui:
             connection_mode = pybullet.GUI
@@ -277,6 +314,10 @@ class EnvBase(ABC):
 
         """
         pose_dict = {}
+        for obs_name, obs_id in self.obs_ids.items():
+            pos, quat = get_pose(obs_id)
+            pose_dict[obs_name] = np.array(list(pos) + list(quat))
+
         for obj_name, obj_id in self.obj_ids.items():
             pos, quat = get_pose(obj_id)
             pose_dict[obj_name] = np.array(list(pos) + list(quat))
@@ -346,7 +387,7 @@ class EnvBase(ABC):
         val_fn = get_validate_fn(
             body=self.robot_id,
             joints=self.robot.arm_joint_indices,
-            obstacles=self.obs_ids.values(),
+            obstacles=list(self.obs_ids.values()) + list(self.obj_ids.values()),
             cache=True
         )
         return val_fn
@@ -369,7 +410,7 @@ class EnvBase(ABC):
             self.robot.arm_joint_indices,
             self.sim.POSITION_CONTROL,
             targetPositions=command.target_q,
-            positionGains=[0.2]*self.robot.num_arm_joints
+            # positionGains=[0.2]*self.robot.num_arm_joints
         )
 
     def _set_gripper_command(self, command):
@@ -384,7 +425,7 @@ class EnvBase(ABC):
                 self.robot.left_gripper_joint_indices, 
                 self.sim.POSITION_CONTROL,
                 targetPositions=target_left_gripper_pos,
-                positionGains=[0.02]*2,
+                positionGains=[self.gripper_gain]*2,
             )
 
         if command.right_gripper_open is not None:
@@ -398,16 +439,17 @@ class EnvBase(ABC):
                 self.robot.right_gripper_joint_indices, 
                 self.sim.POSITION_CONTROL,
                 targetPositions=target_right_gripper_pos,
-                positionGains=[0.02]*2,
+                positionGains=[self.gripper_gain]*2,
             )
 
-    def execute_command(self, command, render=False):
+    def execute_command(self, command, render=False, num_steps_after=0):
         """
         Simulate the robot for given commands.
         
         Args:
             command (list[Command]): list of command to execute the robot.
             render (bool): render images or not.
+            num_steps_after (int): number of steps to simulate after executing the command.
 
         Returns:
             imgs (list): list of images (empty if render is False)
@@ -419,10 +461,22 @@ class EnvBase(ABC):
                 self._set_target_joint_position(command[i])
                 self._set_gripper_command(command[i])
                 self.sim.stepSimulation()
+
+                if not render:
+                    time.sleep(self.dt)
+            
             if render:
                 imgs.append(self.render())
-            else:
-                time.sleep(0.01)
+    
+        for i in range(num_steps_after):
+            for _ in range(self.ctrl_step):
+                self.sim.stepSimulation()
+
+                if not render:
+                    time.sleep(self.dt)
+
+            if render:
+                imgs.append(self.render())
 
         return imgs
 
@@ -461,14 +515,14 @@ class EnvBase(ABC):
 
         # self.sim.removeAllUserParameters()
 
-    def draw_points(self, positions, colors=None, size=0.01):
+    def draw_points(self, positions, rgba=None, radius=0.01):
         """
         Draw points in a simulation.
 
         Args:
             positions (np.ndarray): positions of points (3 or N x 3)
-            colors (np.ndarray): colors (0 ~ 1) of points (N x 3)
-            size (float): size of points
+            rgba (np.ndarray): rgba (0 ~ 1) of points (N x 4)
+            size (float): radius of points
 
         Returns:
 
@@ -479,13 +533,13 @@ class EnvBase(ABC):
         if positions.ndim == 1:
             positions = np.expand_dims(positions, axis=0)
 
-        if colors is None:
-            colors = np.zeros((positions.shape[0], 4))
-            colors[:,0] = 1
-            colors[:,3] = 1
+        if rgba is None:
+            rgba = np.zeros((positions.shape[0], 4))
+            rgba[:,0] = 1
+            rgba[:,3] = 1
 
-        for pos, color in zip(positions, colors):
-            id = create_sphere(radius=size, color=color, collision=False)
+        for pos, color in zip(positions, rgba):
+            id = create_sphere(radius=radius, color=color, collision=False)
             set_position(id, pos[0], pos[1], pos[2])
             self.debug_ids.append(id)
 
@@ -494,6 +548,27 @@ class EnvBase(ABC):
         #     pointColorsRGB=colors, 
         #     pointSize=size,
         # )
+
+    def draw_frame(self, pose, radius=0.005, height=0.1):
+        """
+        Draw frame in a simulation.
+
+        Args:
+            pose (np.ndarray): pose of frame (position (3) + quaternion (4))
+            size (float): size of frame
+
+        Returns:
+
+        """
+
+        x_id, y_id, z_id = create_frame(radius, height)
+        x_pose, y_pose, z_pose = get_axes_poses(pose, height)
+
+        set_pose(x_id, x_pose)
+        set_pose(y_id, y_pose)
+        set_pose(z_id, z_pose)
+
+        self.debug_ids.extend([x_id, y_id, z_id])
 
 
 class PickCubeEnv(EnvBase):
@@ -511,17 +586,22 @@ class PickCubeEnv(EnvBase):
         self.obs_ids["table"] = table_id
 
         # Cube
-        cube_size = [0.02, 0.02, 0.1]
+        cube_size = [0.015, 0.015, 0.1]
         card_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
         self.cube_pos = [table_pos[0], 0.0, card_z]
         self.cube_quat = [0.0, 0.0, 0.0, 1.0]
-        cube_id = create_box(*cube_size, mass=0.1, color=BLUE)
+        cube_id = create_box(*cube_size, mass=0.5, color=WHITE)
         set_pose(cube_id,(self.cube_pos, self.cube_quat))
+        set_dynamics(cube_id, lateralFriction=100.0, spinningFriction=100.0, rollingFriction=0.01, restitution=0.0, contactStiffness=10000000.0, contactDamping=10000.0)
         self.obj_ids["cube"] = cube_id
 
     def reset(self):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
         set_pose(self.obj_ids["cube"], (self.cube_pos, self.cube_quat))
+
+    def check_success(self):
+        cube_pos = self.get_object_poses()["cube"][:3]
+        return cube_pos[2] > 0.7
 
 class PenholderEnv(EnvBase):
     def __init__(self, cfg):
@@ -530,8 +610,8 @@ class PenholderEnv(EnvBase):
 
     def loadEnv(self):
         # Table
-        table_shape = [0.4, 0.84, 0.5]
-        table_pos = [0.3, 0.0, 0.25]
+        table_shape = [0.4, 0.84, 0.6]
+        table_pos = [0.3, 0.0, 0.3]
         table_quat = [0.0, 0.0, 0.0, 1.0]
         table_id = create_box(*table_shape, color=GREY)
         set_pose(table_id,(table_pos, table_quat))
@@ -543,7 +623,7 @@ class PenholderEnv(EnvBase):
         self.holder_quat = [0.0, 0.0, 0.0, 1.0]
         penholder_id = create_obj(path="assets/meshes/penholder_coacd.obj", color=GREEN)
         set_pose(penholder_id,(self.holder_pos, self.holder_quat))
-        self.obj_ids["holder"] = penholder_id
+        self.obs_ids["holder"] = penholder_id
 
         # pen_radius = 0.01
         # pen_height = 0.12
@@ -558,21 +638,22 @@ class PenholderEnv(EnvBase):
         pen_size = [0.01, 0.01, 0.12]
 
         pen_z = table_pos[2] + table_shape[2]/2 + pen_size[2]/2
-        self.pen_pos = [table_pos[0]+0.1, 0.1, pen_z]
+        self.pen_pos = [table_pos[0], 0.1, pen_z]
         self.pen_quat = [0.0, 0.0, 0.0, 1.0]
         pen_id = create_box(*pen_size, mass=0.1, color=BLUE)
         set_pose(pen_id,(self.pen_pos, self.pen_quat))
+        set_dynamics(pen_id, lateralFriction=100.0, spinningFriction=100.0, rollingFriction=0.01, restitution=0.0, contactStiffness=10000000.0, contactDamping=10000.0)
         self.obj_ids["pen"] = pen_id
 
     def check_success(self):
-        pen_pos = np.array(get_pose(self.obj_ids["pen"])[0])
-        holder_pos = np.array(get_pose(self.obj_ids["holder"])[0])
+        pen_pos = self.get_object_poses()["pen"][:3]
+        holder_pos = self.get_object_poses()["holder"][:3]
         
         return np.linalg.norm(holder_pos[:2] - pen_pos[:2]) < 0.03 and holder_pos[2] < 0.8
 
     def reset(self):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
-        set_pose(self.obj_ids["holder"], (self.holder_pos, self.holder_quat))
+        set_pose(self.obs_ids["holder"], (self.holder_pos, self.holder_quat))
         set_pose(self.obj_ids["pen"],(self.pen_pos, self.pen_quat))
 
 class CurlingEnv(EnvBase):
@@ -582,30 +663,30 @@ class CurlingEnv(EnvBase):
 
     def loadEnv(self):
         # Table
-        table_shape = [2.0, 0.6, 0.4]
-        table_pos = [1.1, 0.3, 0.2]
+        table_shape = [2.0, 0.6, 0.6]
+        table_pos = [1.1, 0.0, 0.2]
         table_quat = [0.0, 0.0, 0.0, 1.0]
         table_id = create_box(*table_shape, color=GREY)
         set_pose(table_id,(table_pos, table_quat))
+        set_dynamics(table_id, lateralFriction=0.1, spinningFriction=0.1)
         self.obs_ids["table"] = table_id
 
         # Curling
         curling_z = table_pos[2] + table_shape[2]/2
-        self.curling_pos = [0.3, 0.3, curling_z]
+        self.curling_pos = [0.4, 0.0, curling_z]
         self.curling_quat = [0, 0, 0.7071068, 0.7071068]
-        curling_id = create_obj(scale=1.5, mass=1.0, path="assets/meshes/curling_coacd.obj", color=BLUE)
+        curling_id = create_obj(scale=1.5, mass=1.0, path="assets/meshes/curling_high_handle_coacd.obj", color=BLUE)
         set_pose(curling_id,(self.curling_pos, self.curling_quat))
+        set_dynamics(curling_id, lateralFriction=0.05, spinningFriction=0.05)
         self.obj_ids["curling"] = curling_id
-
-        self.goal_pos = np.array([1.5, 0.3, 0.4])
-
-    def check_success(self):
-        curling_pos = get_pose(self.obj_ids["curling"])[0]
-        return np.linalg.norm(curling_pos - self.goal_pos) < 0.2
     
     def reset(self):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
         set_pose(self.obj_ids["curling"], (self.curling_pos, self.curling_quat))
+
+    def check_success(self):
+        curling_pos = self.get_object_poses()["curling"][:3]
+        return curling_pos[0] > 1.0
     
 if __name__ == "__main__":
 
