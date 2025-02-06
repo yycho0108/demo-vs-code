@@ -1,10 +1,19 @@
+import sys
+sys.path.append('..')
 import numpy as np
+import pickle
 from env.bimanual_bullet import PickCubeEnv
-from mp.ompl_wrapper import MotionPlanner, Command
 from scipy.spatial.transform import Rotation as R
+from mp.iface import Command
+import pybullet as p
+
+try:
+    from mp.ompl_wrapper import MotionPlanner
+except ImportError as e:
+    print(F'Skip OMPL import : {e}')
 
 
-if __name__ == "__main__":
+def main():
     cfg = {
         "seed": 42,
         "gui": True,
@@ -28,7 +37,7 @@ if __name__ == "__main__":
     }
 
     env = PickCubeEnv(cfg)
-    mp = MotionPlanner(env)
+    # mp = MotionPlanner(env)
 
     env.reset()
     joint_positions = env.get_joint_positions()
@@ -76,4 +85,3 @@ if __name__ == "__main__":
     obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=100)
 
     print("success: ", env.check_success())
-

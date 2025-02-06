@@ -7,12 +7,7 @@ from ompl import base as ob
 from ompl import geometric as og
 from ompl import util as ou
 
-
-@dataclass
-class Command:
-    target_q: np.ndarray = None
-    left_gripper_open: bool = None
-    right_gripper_open: bool = None
+from mp.iface import Command
 
 
 def ompl_state_to_np(state, num_joints):

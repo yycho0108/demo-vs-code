@@ -380,7 +380,8 @@ class EnvBase(ABC):
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q_orig)
         return is_collision
     
-    def solve_tool_ik(self, tool_pose, left_or_right="left", max_attempts=5, gripper_open=None, check_collision=True):
+    def solve_tool_ik(self, tool_pose, left_or_right="left", max_attempts=5, gripper_open=None, check_collision=True,
+                      return_all:bool=False):
         """
         Solve inverse kinematics (IK) for given tool pose.
 
@@ -397,14 +398,23 @@ class EnvBase(ABC):
         """
         assert left_or_right in ["left", "right"], "left_or_right should be either 'left' or 'right'"
         q = self.get_joint_positions()
-        q_ik = self.robot.ik(tool_pose, left_or_right, max_attempts=max_attempts)
+        q_ik = self.robot.ik(tool_pose,
+                             left_or_right,
+                             max_attempts=max_attempts)
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q)
         
         if q_ik is None:
+            raise ValueError(F'{q_ik.shape}')
             print("No IK solution is found!!")
             return None
         
         if not check_collision:
+            if return_all:
+                if left_or_right == "left":
+                    q[:6] = q_ik
+                elif left_or_right == "right":
+                    q[6:] = q_ik
+                return q
             return q_ik
         
         if left_or_right == "left":
@@ -430,6 +440,13 @@ class EnvBase(ABC):
             print("IK solution is in collision!!")
             return None
 
+        if return_all:
+            raise ValueError(F'{q.shape}')
+            print('q')
+            return q
+
+        raise ValueError('stop')
+        print('q_ik')
         return q_ik
 
     def _get_val_fn(self):
@@ -454,6 +471,9 @@ class EnvBase(ABC):
     def _set_target_joint_position(self, command):
         if command.target_q is None:
             return
+        print(command.target_q.shape,
+              np.shape(self.robot.arm_joint_indices))
+
         self.sim.setJointMotorControlArray(
             self.robot_id,
             self.robot.arm_joint_indices,
