@@ -80,7 +80,6 @@ if __name__ == "__main__":
         open_gripper_start=True,
         q_goal=q_goal, 
         open_gripper=True,
-        interpolation_res=0.02,
         check_collision=True,
     )
     if not to_pre_push_command:
