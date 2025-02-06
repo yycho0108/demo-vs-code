@@ -37,6 +37,8 @@ if __name__ == "__main__":
     holder_pose = object_pose_dict["holder"]
 
     # Solve IK for pre-defined poses
+
+    # env.sim.configureDebugVisualizer(env.sim.COV_ENABLE_RENDERING, 0)
     grasp_left_tool_pose = np.concatenate([pen_pose[:3], left_tool_pose[3:]])
     z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
     for z_rot in z_rot_candidates:
@@ -87,6 +89,7 @@ if __name__ == "__main__":
     to_up_holder_command = mp.get_joint_command(q_start=to_up_grasp_command[-1].target_q, open_gripper_start=False, q_goal=q_goal, open_gripper=False, check_collision=False)
 
     command = gripper_open_command + to_box_command + gripper_close_command + to_up_grasp_command + to_up_holder_command + gripper_open_command
+    # env.sim.configureDebugVisualizer(env.sim.COV_ENABLE_RENDERING, 1)
     
     obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=100)
     

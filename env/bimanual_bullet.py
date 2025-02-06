@@ -441,12 +441,12 @@ class EnvBase(ABC):
             return None
 
         if return_all:
-            raise ValueError(F'{q.shape}')
-            print('q')
+            # raise ValueError(F'{q.shape}')
+            # print('q')
             return q
 
-        raise ValueError('stop')
-        print('q_ik')
+        # raise ValueError('stop')
+        # print('q_ik')
         return q_ik
 
     def _get_val_fn(self):
@@ -471,8 +471,8 @@ class EnvBase(ABC):
     def _set_target_joint_position(self, command):
         if command.target_q is None:
             return
-        print(command.target_q.shape,
-              np.shape(self.robot.arm_joint_indices))
+        # print(command.target_q.shape,
+        #       np.shape(self.robot.arm_joint_indices))
 
         self.sim.setJointMotorControlArray(
             self.robot_id,
