@@ -66,6 +66,27 @@ def np2o3d_img2pcd(
     return pcd.to_legacy()
 
 
+def pose_from_kpt(k):
+    wrist = k[..., 0, :]
+    index = k[..., 8, :]
+    thumb = k[..., 4, :]
+    u1 = index - wrist
+    u2 = thumb - wrist
+
+    z = np.cross(u1, u2)
+    z /= np.linalg.norm(z)
+    x = 0.5 * (u1 + u2)
+    x /= np.linalg.norm(x)
+    y = np.cross(z, x)
+    y /= np.linalg.norm(y)
+    R = np.stack([x, y, z], axis=-1)
+    T = [np.eye(4) for _ in range(len(k))]
+    T = np.stack(T, axis=0)
+    T[..., :3, :3] = R
+    T[..., :3, 3] = 0.5 * (index + thumb)
+    return T
+
+
 @oc_cli
 def main(cfg: Config):
     # load camera intrinsics & extrinsics.
@@ -104,6 +125,10 @@ def main(cfg: Config):
     axis.transform(T)
     vis.add_geometry(axis)
 
+    pose = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
+    vis.add_geometry(pose)
+    Ts = pose_from_kpt(np.stack(ps, axis=0))
+
     # Hand keypoints visualization
     kpts = o3d.geometry.PointCloud()
     kpts.points = o3d.utility.Vector3dVector(ps[0])
@@ -117,6 +142,11 @@ def main(cfg: Config):
     for j in range(100000):
         i = j % len(ps)
 
+        p = o3d.geometry.TriangleMesh.create_coordinate_frame(0.2)
+        p.transform(Ts[i])
+        pose.vertices = p.vertices
+        vis.update_geometry(pose)
+
         # keypoints
         kpts.points = o3d.utility.Vector3dVector(ps[i])
         vis.update_geometry(kpts)
@@ -126,8 +156,9 @@ def main(cfg: Config):
             cloud.points = clouds[i].points
             cloud.colors = clouds[i].colors
             vis.update_geometry(cloud)
-        vis.poll_events()
-        vis.update_renderer()
+        for _ in range(128):
+            vis.poll_events()
+            vis.update_renderer()
 
 
 if __name__ == '__main__':
