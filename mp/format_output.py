@@ -13,10 +13,12 @@ import open3d as o3d
 
 @dataclass
 class Config:
-    seq_path: str = '/tmp/sav10/'
-    traj_path: str = '/tmp/sav2/hand.pkl'
-    calib_path: str = '/tmp/sav10/cam.pkl'
+    seq_path: str = '/tmp/sav003/'
+    traj_path: str = '/tmp/sav003/traj.pkl'
+    calib_path: str = '/tmp/sav003/cam.pkl'
+    out_path: str = '/tmp/sav003/act.pkl'
     show_cloud: bool = False
+    grasp_eps: float = 0.025
 
 
 def pose_from_kpt(k):
@@ -27,17 +29,33 @@ def pose_from_kpt(k):
     u2 = thumb - wrist
 
     z = np.cross(u1, u2)
-    z /= np.linalg.norm(z)
+    z /= np.linalg.norm(z, axis=-1, keepdims=True)
+
     x = 0.5 * (u1 + u2)
-    x /= np.linalg.norm(x)
+    # x =u1
+    x /= np.linalg.norm(x, axis=-1, keepdims=True)
+
     y = np.cross(z, x)
-    y /= np.linalg.norm(y)
+    y /= np.linalg.norm(y, axis=-1, keepdims=True)
+
     R = np.stack([x, y, z], axis=-1)
+    for r in R:
+        print(np.linalg.det(r))
     T = [np.eye(4) for _ in range(len(k))]
     T = np.stack(T, axis=0)
     T[..., :3, :3] = R
     T[..., :3, 3] = 0.5 * (index + thumb)
     return T
+
+
+def grasp_from_kpt(k, eps: float = 0.025):
+    wrist = k[..., 0, :]
+    index = k[..., 8, :]
+    thumb = k[..., 4, :]
+    dist = index - thumb
+    dist = np.linalg.norm(index - thumb,
+                          axis=-1)
+    return dist < eps
 
 
 @oc_cli
@@ -62,17 +80,33 @@ def main(cfg: Config):
         t = c.reshape(-1, 1, 3)[-1]
         p = k.reshape(-1, 21, 3)[-1] + t
         ps.append(p)
-    Ts = pose_from_kpt(np.stack(ps, axis=0))
+
+    kpts = np.stack(ps, axis=0)
+    Ts = pose_from_kpt(kpts)
+    Gs = grasp_from_kpt(kpts, cfg.grasp_eps)
+    print(Gs)
 
     # (optional) Convert to tag-frame
-    Ts = np.linalg.inv(T)[None] @ Ts
-    # Ts = T @ Ts
+    tag_from_cam = np.linalg.inv(T)
+    world_from_tag = np.eye(4)
+    world_from_tag[:3, :3] = np.asarray([
+        [1, 0, 0],
+        [0, -1, 0],
+        [0, 0, -1]
+    ])
+    world_from_tag[..., :3, 3] = [0.4, 0.0, 0.2 + 0.4]
+    world_from_cam = world_from_tag @ tag_from_cam
+    Ts = world_from_cam @ Ts
+    with open(cfg.out_path, 'wb') as fp:
+        pickle.dump(dict(tool_pose=Ts, grasp_flag=Gs),
+                    fp)
 
     vis = o3d.visualization.Visualizer()
     vis.create_window()
 
     # axis shows where the tag is (was) w.r.t. the camera
-    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
+    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(0.2)
+    axis.transform(world_from_tag)
     vis.add_geometry(axis)
 
     pose = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
@@ -80,8 +114,9 @@ def main(cfg: Config):
 
     for j in range(100000):
         i = j % len(ps)
+        print(i)
 
-        p = o3d.geometry.TriangleMesh.create_coordinate_frame(0.2)
+        p = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
         p.transform(Ts[i])
         pose.vertices = p.vertices
         vis.update_geometry(pose)

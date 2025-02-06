@@ -6,6 +6,7 @@ from env.bimanual_bullet import PickCubeEnv
 from scipy.spatial.transform import Rotation as R
 from mp.iface import Command
 import pybullet as p
+from tqdm.auto import tqdm
 
 from mp.ompl_wrapper import MotionPlanner
 
@@ -30,7 +31,6 @@ def main():
         "ctrl": {
             "gripper_gain": 0.03,
         },
-        "problems": [0,1,2],
     }
 
     env = PickCubeEnv(cfg)
@@ -43,17 +43,6 @@ def main():
     cube_pose = object_pose_dict["cube"]
 
     # Solve IK for pre-defined poses
-    grasp_left_tool_pose = np.concatenate([cube_pose[:3], left_tool_pose[3:]])
-    z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
-    for z_rot in z_rot_candidates:
-        grasp_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
-        env.draw_frame(grasp_left_tool_pose)
-        grasp_q_left = env.solve_tool_ik(grasp_left_tool_pose, "left", gripper_open=True, check_collision=True)
-        if grasp_q_left is not None:
-            break
-    else:
-        raise ValueError("No valid grasp pose found")
-    
     up_left_tool_pose = np.concatenate([cube_pose[:3], left_tool_pose[3:]])
     up_left_tool_pose[2] += 0.1
     z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
@@ -69,15 +58,40 @@ def main():
     # Do motion planning
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
 
-    q_goal = np.concatenate([grasp_q_left, env.get_joint_positions()[6:]])
-    to_grasp_command = mp.get_joint_command(open_gripper_start=True, q_goal=q_goal, open_gripper=True)
+    with open('/tmp/sav005/act.pkl', 'rb') as fp:
+        traj = pickle.load(fp)
+        tool_poses = traj['tool_pose']
+        grasp_flags = traj['grasp_flag']
+        print(grasp_flags)
+
+    to_grasp_command = []
+    q_curr = env.get_joint_positions()
+    for tool_pose, grasp_flag in tqdm(zip(tool_poses, grasp_flags), total=len(tool_poses)):
+        xyz = tool_pose[..., :3, 3]
+        rot = tool_pose[..., :3, :3]
+        quat = (R.from_matrix(rot)).as_quat()
+        q = np.concatenate([xyz, quat], axis=-1)
+        try:
+            q = env.solve_tool_ik(q, 'left',
+                    check_collision=(not grasp_flag),
+                    gripper_open=(not grasp_flag))
+            q = np.concatenate([q, env.get_joint_positions()[6:]])
+            # seems necessary to stabilize motion plan...?
+            env.set_joint_positions(q) 
+            to_grasp_command.append(Command(q, (not grasp_flag), False))
+        except (AttributeError, ValueError):
+            continue
+    env.set_joint_positions(q_curr)
+
+    #q_goal = np.concatenate([grasp_q_left, env.get_joint_positions()[6:]])
+    #to_grasp_command = mp.get_joint_command(open_gripper_start=True, q_goal=q_goal, open_gripper=True)
     
     gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*20
     
     q_goal = np.concatenate([up_q_left, env.get_joint_positions()[6:]])
     to_up_command = mp.get_joint_command(open_gripper_start=False, q_start=to_grasp_command[-1].target_q, q_goal=q_goal, open_gripper=False, check_collision=False)
 
-    command = gripper_open_command + to_grasp_command + gripper_close_command + to_up_command
+    command = gripper_open_command + to_grasp_command# + gripper_close_command + to_up_command
     
     obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=100)
 

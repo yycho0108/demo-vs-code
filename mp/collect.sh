@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 DEVICE_ID='819312070397'
-SAVE_DIR='/tmp/sav002'
+SAVE_DIR='/tmp/sav005'
 
 # NOTE(ycho): basename only
 VID_FILE="out.mp4" 
@@ -27,3 +27,4 @@ python3 client.py vid_path="${SAVE_DIR}/${VID_FILE}" calib_path="${SAVE_DIR}/${C
 # python3 visualize.py seq_path="${SAVE_DIR}" traj_path="${SAVE_DIR}/${TRAJ_FILE}" calib_path="${SAVE_DIR}/${CAM_FILE}" #show_cloud=1
 
 # (5) load hand trajectory convert to robot actions. 
+python3 format_output.py seq_path="${SAVE_DIR}" traj_path="${SAVE_DIR}/${TRAJ_FILE}" calib_path="${SAVE_DIR}/${CAM_FILE}" out_path="${SAVE_DIR}/act.pkl"
