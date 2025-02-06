@@ -30,7 +30,7 @@ def get_camera_pose(detector: Detector,
     # Parse camera params.
     # fx, fy, cx, cy
     cam_param = K[[0, 1, 0, 1],
-                  [0, 1, 2, 2]]
+                  [0, 1, 2, 2]].tolist()
 
     # Detect tags.
     gray = rgb2gray(rgb)
@@ -69,7 +69,8 @@ class Config:
 
 @oc_cli
 def main(cfg: Config = Config()):
-    cam_cfg = MultiRSCamera.Config.map_devices(cfg.cam, cfg.dev)
+    cam_cfg = MultiRSCamera.Config.map_devices(cfg.cam,
+                                               [cfg.device_id])
     detector = Detector(
         families=cfg.tag_family,
         quad_decimate=1

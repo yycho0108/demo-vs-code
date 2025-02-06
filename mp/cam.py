@@ -56,6 +56,12 @@ class MultiRSCamera:
             dev_ids = [cam.device_id for cam in cfg.cams]
             ctx = rs.context()
 
+            serials = [dev.get_info(rs.camera_info.serial_number)
+                    for dev in ctx.devices]
+            has_all = set(dev_ids).issubset(serials)
+            if not has_all:
+                raise ValueError(F'{dev_ids} not all in {serials}')
+
             for i in range(len(ctx.devices)):
                 sn = ctx.devices[i].get_info(rs.camera_info.serial_number)
                 if sn not in dev_ids:
@@ -146,6 +152,7 @@ class MultiRSCamera:
             [0, i.fy, i.ppy],
             [0, 0, 1]], dtype=np.float32)
             for i in intrinsics]
+        self.Ks = np.asarray(self.Ks, dtype=np.float32)
 
     def wait(self, delay: float = 0.01):
         while True:
@@ -231,3 +238,36 @@ class MultiRSCamera:
             cloud = np.stack(cloud, axis=0)
             out['cloud'] = cloud
         return out
+
+
+if __name__ == '__main__':
+    from config import oc_cli
+    import cv2
+
+    @dataclass
+    class Config:
+        cam: CameraConfig = CameraConfig()
+        dev: Optional[Tuple[str, ...]] = None
+
+    @oc_cli
+    def main(cfg: Config):
+        if cfg.dev is None:
+            # list devices
+            ctx = rs.context()
+            print(' == list of connected devices == ')
+            for dev in ctx.devices:
+                print(dev.get_info(rs.camera_info.serial_number))
+            return
+
+        cam_cfg = MultiRSCamera.Config.map_devices(cfg.cam, cfg.dev)
+        with MultiRSCamera(cam_cfg).open() as cam:
+            frame = cam()
+            cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+            while True:
+                frame = cam()
+                cv2.imshow('frame', frame['color'].squeeze(axis=0)[..., ::-1])
+                k = cv2.waitKey(1)
+                if (k & 0xFF) == ord('q'):
+                    break
+
+    main()
