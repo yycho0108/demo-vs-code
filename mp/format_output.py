@@ -66,18 +66,17 @@ def main(cfg: Config):
 
     # (optional) Convert to tag-frame
     Ts = np.linalg.inv(T)[None] @ Ts
+    # Ts = T @ Ts
 
     vis = o3d.visualization.Visualizer()
     vis.create_window()
 
     # axis shows where the tag is (was) w.r.t. the camera
     axis = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
-    axis.transform(T)
     vis.add_geometry(axis)
 
     pose = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
     vis.add_geometry(pose)
-    Ts = pose_from_kpt(np.stack(ps, axis=0))
 
     for j in range(100000):
         i = j % len(ps)
@@ -87,7 +86,7 @@ def main(cfg: Config):
         pose.vertices = p.vertices
         vis.update_geometry(pose)
 
-        for _ in range(128):
+        for _ in range(4):
             vis.poll_events()
             vis.update_renderer()
 

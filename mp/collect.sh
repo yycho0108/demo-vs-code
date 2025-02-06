@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-DEVICE_ID=''
-SAVE_DIR='/tmp/sav001'
+DEVICE_ID='819312070397'
+SAVE_DIR='/tmp/sav002'
 
 # NOTE(ycho): basename only
 VID_FILE="out.mp4" 

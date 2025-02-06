@@ -13,9 +13,9 @@ import open3d as o3d
 
 @dataclass
 class Config:
-    seq_path: str = '/tmp/sav10/'
-    traj_path: str = '/tmp/sav2/hand.pkl'
-    calib_path: str = '/tmp/sav10/cam.pkl'
+    seq_path: str = '/tmp/sav002/'
+    traj_path: str = '/tmp/sav002/traj.pkl'
+    calib_path: str = '/tmp/sav002/cam.pkl'
     show_cloud: bool = False
 
 
@@ -156,7 +156,7 @@ def main(cfg: Config):
             cloud.points = clouds[i].points
             cloud.colors = clouds[i].colors
             vis.update_geometry(cloud)
-        for _ in range(128):
+        for _ in range(4):
             vis.poll_events()
             vis.update_renderer()
 

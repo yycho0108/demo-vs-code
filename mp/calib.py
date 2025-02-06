@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 import pickle
+from pathlib import Path
 
 import cv2
 from dt_apriltags import Detector
@@ -99,6 +100,8 @@ def main(cfg: Config = Config()):
 
             # save cam_from_tag transform to `out_file`.
             if T is not None:
+                Path(cfg.out_file).parent.mkdir(parents=True,
+                        exist_ok=True)
                 with open(cfg.out_file, 'wb') as fp:
                     pickle.dump(dict(K=cam.Ks.squeeze(axis=0), T=T), fp)
                 return
