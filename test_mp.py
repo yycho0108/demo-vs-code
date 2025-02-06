@@ -31,7 +31,7 @@ if __name__ == "__main__":
     ]
     command = mp.get_joint_command(q_goal=q_goal)
 
-    imgs = env.execute_command(command, render=True)
+    obs_hist, imgs = env.execute_command(command, render=True)
 
 
     # EE goal motion planning
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     command2 = mp.get_joint_command(q_start=command1[-1].target_q, right_tool_goal=right_ee_pose)
     command = command1 + command2
 
-    imgs = env.execute_command(command, render=True)
+    obs_hist, imgs = env.execute_command(command, render=True)
 
     # Gripper control
     env.reset()
@@ -59,4 +59,4 @@ if __name__ == "__main__":
     gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*100
     command = gripper_open_command + gripper_close_command
 
-    imgs = env.execute_command(command)
+    obs_hist, imgs = env.execute_command(command)

@@ -114,6 +114,7 @@ class MotionPlanner:
         q_orig = self.env.get_joint_positions()
 
         if open_gripper_start is not None:
+            q_grip_left, q_grip_right = self.env.get_gripper_joint_position()
             if open_gripper_start:
                 self.env.set_gripper_open("left")
                 self.env.set_gripper_open("right")
@@ -193,6 +194,8 @@ class MotionPlanner:
         traj.interpolate(int(traj.length()/interpolation_res))
 
         self.env.set_joint_positions(q_orig)
+        if open_gripper_start is not None:
+            self.env.set_gripper_joint_position(q_grip_left, q_grip_right)
 
         commands = []
         for state in traj.getStates():

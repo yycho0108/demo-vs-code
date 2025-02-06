@@ -30,7 +30,7 @@ if __name__ == "__main__":
     mp = MotionPlanner(env)
 
     env.reset()
-    left_tool_pose, right_tool_pose = env.get_tool_pose()
+    left_tool_pose, right_tool_pose = env.get_tool_poses()
     object_pose_dict = env.get_object_poses()
     curling_pose = object_pose_dict["curling"]
 
@@ -99,5 +99,5 @@ if __name__ == "__main__":
 
     command = to_pre_push_command + to_post_push_command
     
-    imgs = env.execute_command(command, render=False, num_steps_after=300)
+    obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=300)
     print('success: ', env.check_success())

@@ -30,7 +30,7 @@ if __name__ == "__main__":
     mp = MotionPlanner(env)
 
     env.reset()
-    left_tool_pose, right_tool_pose = env.get_tool_pose()
+    left_tool_pose, right_tool_pose = env.get_tool_poses()
     object_pose_dict = env.get_object_poses()
     pen_pose = object_pose_dict["pen"]
     holder_pose = object_pose_dict["holder"]
@@ -87,6 +87,6 @@ if __name__ == "__main__":
 
     command = gripper_open_command + to_box_command + gripper_close_command + to_up_grasp_command + to_up_holder_command + gripper_open_command
     
-    imgs = env.execute_command(command, render=False, num_steps_after=100)
+    obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=100)
     
     print('success: ', env.check_success())

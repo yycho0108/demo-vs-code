@@ -30,7 +30,8 @@ if __name__ == "__main__":
     mp = MotionPlanner(env)
 
     env.reset()
-    left_tool_pose, right_tool_pose = env.get_tool_pose()
+    joint_positions = env.get_joint_positions()
+    left_tool_pose, right_tool_pose = env.get_tool_poses()
     object_pose_dict = env.get_object_poses()
     cube_pose = object_pose_dict["cube"]
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     for z_rot in z_rot_candidates:
         grasp_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
         env.draw_frame(grasp_left_tool_pose)
-        grasp_q_left = env.solve_tool_ik(grasp_left_tool_pose, "left", check_collision=True)
+        grasp_q_left = env.solve_tool_ik(grasp_left_tool_pose, "left", gripper_open=True, check_collision=True)
         if grasp_q_left is not None:
             break
     else:
@@ -62,16 +63,16 @@ if __name__ == "__main__":
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
 
     q_goal = np.concatenate([grasp_q_left, env.get_joint_positions()[6:]])
-    to_box_command = mp.get_joint_command(open_gripper_start=True, q_goal=q_goal, open_gripper=True)
+    to_grasp_command = mp.get_joint_command(open_gripper_start=True, q_goal=q_goal, open_gripper=True)
     
     gripper_close_command = [Command(left_gripper_open=False, right_gripper_open=False)]*20
     
     q_goal = np.concatenate([up_q_left, env.get_joint_positions()[6:]])
-    to_up_command = mp.get_joint_command(open_gripper_start=False, q_start=to_box_command[-1].target_q, q_goal=q_goal, open_gripper=False, check_collision=False)
+    to_up_command = mp.get_joint_command(open_gripper_start=False, q_start=to_grasp_command[-1].target_q, q_goal=q_goal, open_gripper=False, check_collision=False)
 
-    command = gripper_open_command + to_box_command + gripper_close_command + to_up_command
+    command = gripper_open_command + to_grasp_command + gripper_close_command + to_up_command
     
-    imgs = env.execute_command(command, render=True, num_steps_after=100)
+    obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=100)
 
     print("success: ", env.check_success())
 

@@ -77,6 +77,13 @@ def get_validate_fn(body, joints, obstacles=[], attachments=[], self_collisions=
         return True
     return validate_fn
 
+def quat_from_vector_to_vector(v1, v2):
+    v1 = unit_vector(v1)
+    v2 = unit_vector(v2)
+    axis = np.cross(v1, v2)
+    angle = np.arccos(np.dot(v1, v2))
+    return R.from_rotvec(angle * axis).as_quat()
+
 def create_frame(radius=0.005, height=0.1):
     x = create_cylinder(radius=radius, height=height, color=RED, collision=False)
     y = create_cylinder(radius=radius, height=height, color=GREEN, collision=False)
@@ -171,7 +178,7 @@ class EnvBase(ABC):
         Args:
 
         Returns:
-            q (np.ndarray): current joint positions (size 12)
+            q (np.ndarray): current joint positions of left (0:6) and right (6:12) arms (size 12)
 
         """
         return np.array(get_joint_positions(self.robot_id, self.robot.arm_joint_indices))
@@ -225,7 +232,7 @@ class EnvBase(ABC):
         right_ee_pos, right_ee_quat = get_link_pose(self.robot_id, self.robot.right_arm_joint_indices[-1])
         return np.array([left_ee_pos + left_ee_quat, right_ee_pos + right_ee_quat])
     
-    def get_tool_pose(self):
+    def get_tool_poses(self):
         """
         Get current pose of tool frame.
 
@@ -253,6 +260,23 @@ class EnvBase(ABC):
         left_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices))
         right_finger_pos = np.array(get_joint_positions(self.robot_id, self.robot.right_gripper_joint_indices))
         return left_finger_pos, right_finger_pos
+
+    def set_gripper_joint_position(self, left_finger_pos, right_finger_pos):
+        """
+        Set gripper joint position.
+
+        Args:
+            left_finger_pos (np.ndarray): left gripper joint position (size 2)
+            right_finger_pos (np.ndarray): right gripper joint position (size 2)
+
+        Returns:
+
+        """
+        assert len(left_finger_pos) == 2, f"Given left_finger_pos {left_finger_pos} is not matched to num_joints 2"
+        assert len(right_finger_pos) == 2, f"Given right_finger_pos {right_finger_pos} is not matched to num_joints 2"
+        
+        set_joint_positions(self.robot_id, self.robot.left_gripper_joint_indices, left_finger_pos)
+        set_joint_positions(self.robot_id, self.robot.right_gripper_joint_indices, right_finger_pos)
 
     def get_gripper_opened(self):
         """
@@ -324,6 +348,16 @@ class EnvBase(ABC):
             pose_dict[obj_name] = np.array(list(pos) + list(quat))
         return pose_dict
     
+    def get_obs_dict(self):
+        obs_dict = {
+            "joint_positions": self.get_joint_positions(),
+            "tool_poses": self.get_tool_poses(),
+            "gripper_opened": self.get_gripper_opened(),
+            "object_poses": self.get_object_poses(),
+        }
+
+        return obs_dict
+    
     def check_collision(self, q):
         """
         Check collision for given joint positions.
@@ -339,13 +373,13 @@ class EnvBase(ABC):
         is_collision = get_collision_fn(
             body=self.robot_id,
             joints=self.robot.arm_joint_indices,
-            obstacles=self.obs_ids.values(),
+            obstacles=list(self.obs_ids.values()) + list(self.obj_ids.values()),
             cache=True
         )(q)
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, q_orig)
         return is_collision
     
-    def solve_tool_ik(self, tool_pose, left_or_right="left", max_attempts=5, check_collision=True):
+    def solve_tool_ik(self, tool_pose, left_or_right="left", max_attempts=5, gripper_open=None, check_collision=True):
         """
         Solve inverse kinematics (IK) for given tool pose.
 
@@ -353,6 +387,7 @@ class EnvBase(ABC):
             tool_pose (np.ndarray): tool pose (position (3) + quaternion (4)) to solve IK.
             left_or_right (str): which arm to solve IK among "left" and "right".
             max_attempts (int): (optional) max attempts to solve IK.
+            gripper_open (bool): (optional) make gripper open or not during collision checking.
             check_collision (bool): (optional) check collision for solved IK or not.
             
         Returns:
@@ -378,7 +413,19 @@ class EnvBase(ABC):
         else:
             raise ValueError("left_or_right should be either 'left' or 'right'")
 
-        if self.check_collision(q):
+        if gripper_open is not None:
+            q_grip_left, q_grip_right = self.get_gripper_joint_position()
+            if gripper_open:
+                self.set_gripper_open(left_or_right)
+            else:
+                self.set_gripper_close(left_or_right)
+        
+        is_col = self.check_collision(q)
+
+        if gripper_open is not None:
+            self.set_gripper_joint_position(q_grip_left, q_grip_right)
+
+        if is_col:
             print("IK solution is in collision!!")
             return None
 
@@ -453,9 +500,11 @@ class EnvBase(ABC):
             num_steps_after (int): number of steps to simulate after executing the command.
 
         Returns:
+            obs_hist (list): list of observations
             imgs (list): list of images (empty if render is False)
 
         """
+        obs_hist = []
         imgs = []
         for i in tqdm(range(len(command))):
             for _ in range(self.ctrl_step):
@@ -466,6 +515,7 @@ class EnvBase(ABC):
                 if not render:
                     time.sleep(self.dt)
             
+            obs_hist.append(self.get_obs_dict())
             if render:
                 imgs.append(self.render())
     
@@ -476,10 +526,11 @@ class EnvBase(ABC):
                 if not render:
                     time.sleep(self.dt)
 
+            obs_hist.append(self.get_obs_dict())
             if render:
                 imgs.append(self.render())
 
-        return imgs
+        return obs_hist, imgs
 
     def _set_render_cfg(self, render_cfg):
         self.width, self.height = render_cfg["width"], render_cfg["height"]
@@ -495,26 +546,19 @@ class EnvBase(ABC):
         )
 
     def render(self):
-        img = self.sim.getCameraImage(self.width, self.height, self.view_matrix, self.projection_matrix)
-        rgb = np.reshape(img[2], (self.height, self.width, 4))[:, :, :3]  # Extract RGB data
-        return rgb
-
-    def clear_vis(self):
         """
-        Remove all visualization items.
+        Render image.
 
         Args:
 
         Returns:
+            rgb (np.ndarray): rendered image (height x width x 3)
 
         """
 
-        for id in self.debug_ids:
-            self.sim.removeBody(id)
-
-        self.debug_ids = []
-
-        # self.sim.removeAllUserParameters()
+        img = self.sim.getCameraImage(self.width, self.height, self.view_matrix, self.projection_matrix)
+        rgb = np.reshape(img[2], (self.height, self.width, 4))[:, :, :3]  # Extract RGB data
+        return rgb
 
     def draw_points(self, positions, rgba=None, radius=0.01):
         """
@@ -544,11 +588,30 @@ class EnvBase(ABC):
             set_position(id, pos[0], pos[1], pos[2])
             self.debug_ids.append(id)
 
-        # self.sim.addUserDebugPoints(
-        #     pointPositions=positions, 
-        #     pointColorsRGB=colors, 
-        #     pointSize=size,
-        # )
+    def draw_line(self, start_pos, end_pos, rgba=None, width=0.005):
+        """
+        Draw line in a simulation.
+
+        Args:
+            start_pos (np.ndarray): start position of line (3)
+            end_pos (np.ndarray): end position of line (3)
+            rgba (np.ndarray): rgba (0 ~ 1) of line (4)
+            width (float): width of line
+
+        Returns:
+
+        """
+
+        if rgba is None:
+            rgba = np.zeros(4)
+            rgba[0] = 1
+            rgba[3] = 1
+        
+        id = create_cylinder(radius=width, height=np.linalg.norm(end_pos - start_pos), color=rgba, collision=False)
+        pos = (start_pos + end_pos) / 2
+        set_position(id, *pos)
+        set_quat(id, quat_from_vector_to_vector([0, 0, 1], end_pos - start_pos))
+        self.debug_ids.append(id)
 
     def draw_frame(self, pose, radius=0.005, height=0.1):
         """
@@ -571,6 +634,21 @@ class EnvBase(ABC):
 
         self.debug_ids.extend([x_id, y_id, z_id])
 
+    def clear_vis(self):
+        """
+        Remove all visualization items.
+
+        Args:
+
+        Returns:
+
+        """
+
+        for id in self.debug_ids:
+            self.sim.removeBody(id)
+
+        self.debug_ids = []
+
 
 class PickCubeEnv(EnvBase):
     def __init__(self, cfg):
@@ -582,7 +660,7 @@ class PickCubeEnv(EnvBase):
         table_shape = [0.5, 0.5, 0.8]
         table_pos = [0.4, 0.0, 0.2]
         table_quat = [0.0, 0.0, 0.0, 1.0]
-        table_id = create_box(*table_shape)
+        table_id = create_box(*table_shape, color=GREY)
         set_pose(table_id,(table_pos, table_quat))
         self.obs_ids["table"] = table_id
 
@@ -591,7 +669,7 @@ class PickCubeEnv(EnvBase):
         card_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
         self.cube_pos = [table_pos[0], 0.0, card_z]
         self.cube_quat = [0.0, 0.0, 0.0, 1.0]
-        cube_id = create_box(*cube_size, mass=0.5, color=WHITE)
+        cube_id = create_box(*cube_size, mass=0.5, color=RED)
         set_pose(cube_id,(self.cube_pos, self.cube_quat))
         set_dynamics(cube_id, lateralFriction=100.0, spinningFriction=100.0, rollingFriction=0.01, restitution=0.0, contactStiffness=10000000.0, contactDamping=10000.0)
         self.obj_ids["cube"] = cube_id
