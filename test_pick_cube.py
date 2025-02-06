@@ -37,7 +37,7 @@ def main():
     }
 
     env = PickCubeEnv(cfg)
-    # mp = MotionPlanner(env)
+    mp = MotionPlanner(env)
 
     env.reset()
     joint_positions = env.get_joint_positions()
@@ -85,3 +85,6 @@ def main():
     obs_hist, imgs = env.execute_command(command, render=False, num_steps_after=100)
 
     print("success: ", env.check_success())
+
+if __name__ == '__main__':
+    main()
