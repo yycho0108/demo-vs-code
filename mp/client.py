@@ -16,13 +16,14 @@ class Config:
     port: int = 5000
     vid_path: str = '/tmp/sav2/out2.mp4'
     out_path: str = '/tmp/sav2/hand.pkl'
-    calib_path: str = '/tmp/cam.pkl'
+    cam_path: str = '/tmp/cam.json'
 
 
 @oc_cli
 def main(cfg: Config):
-    with open(cfg.calib_path, 'rb') as fp:
-        fx = pickle.load(fp)['K'][0, 0]
+    with open(cfg.cam_path, 'r') as fp:
+        K = np.asarray(json.load(fp)['K'], dtype=np.float32)
+        fx = K[0, 0]
 
     with open(cfg.vid_path, 'rb') as fp:
         resp = requests.post(F'http://{cfg.host}:{cfg.port}',

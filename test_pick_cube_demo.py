@@ -58,11 +58,11 @@ def main():
     # Do motion planning
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
 
-    with open('/tmp/sav005/act.pkl', 'rb') as fp:
-        traj = pickle.load(fp)
-        tool_poses = traj['tool_pose']
-        grasp_flags = traj['grasp_flag']
-        print(grasp_flags)
+    with open('/tmp/sav005/act.json', 'rb') as fp:
+        traj = json.load(fp)
+        tool_poses = np.asarray(traj['tool_pose'], dtype=np.float32)
+        grasp_flags = np.asarray(traj['grasp_flag'], dtype=bool)
+        print('grasp_flags', grasp_flags)
 
     to_grasp_command = []
     q_curr = env.get_joint_positions()

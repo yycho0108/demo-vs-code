@@ -19,7 +19,6 @@ class Config:
         img_height=240,
     )
     device_id: str = '233622074125'
-    calib_file: str = '/tmp/cam.pkl'
     fps: float = 100.0
     show: bool = False
     save_dir: Optional[str] = '/tmp/sav'
@@ -45,7 +44,7 @@ def main(cfg: Config):
             frame = cam()
         prev_stamp = frame['stamp']
 
-        #for t in tqdm(range(1000)):
+        # for t in tqdm(range(1000)):
         t = -1
         while True:
             frame = cam()

@@ -15,7 +15,7 @@ import open3d as o3d
 class Config:
     seq_path: str = '/tmp/sav002/'
     traj_path: str = '/tmp/sav002/traj.pkl'
-    calib_path: str = '/tmp/sav002/cam.pkl'
+    cam_path: str = '/tmp/sav002/cam.json'
     show_cloud: bool = False
 
 
@@ -90,7 +90,7 @@ def pose_from_kpt(k):
 @oc_cli
 def main(cfg: Config):
     # load camera intrinsics & extrinsics.
-    with open(cfg.calib_path, 'rb') as fp:
+    with open(cfg.cam_path, 'rb') as fp:
         data = pickle.load(fp)
         K = data['K']
         T = data['T']

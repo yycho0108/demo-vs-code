@@ -3,7 +3,7 @@
 from typing import Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
-import pickle
+import json
 from pathlib import Path
 
 import cv2
@@ -11,6 +11,24 @@ from dt_apriltags import Detector
 
 from config import oc_cli
 from cam import MultiRSCamera, CameraConfig
+
+
+@dataclass
+class Config:
+    # tag params
+    tag_family: str = 'tag36h11'
+    tag_size: float = 0.159
+    tag_id: int = 0
+
+    # cam params
+    cam: CameraConfig = CameraConfig(
+        img_width=424,
+        img_height=240,
+    )
+    device_id: str = '233622074125'
+
+    # app params
+    cam_path: str = '/tmp/cam.json'
 
 
 def rgb2gray(rgb: np.ndarray) -> np.ndarray:
@@ -21,7 +39,7 @@ def get_camera_pose(detector: Detector,
                     rgb: np.ndarray,
                     K: np.ndarray,
                     tag_size: float,
-                    tag_id: int = 0) -> Tuple[Optional[np.ndarray], bool]:
+                    tag_id: int) -> Tuple[Optional[np.ndarray], bool]:
     """
     Args:
     Return:
@@ -40,6 +58,8 @@ def get_camera_pose(detector: Detector,
 
     # Return if target was not found.
     if tag_id not in tags_dict:
+        if len(tags_dict) > 0:
+            print(F'tag_id = {tag_id} not in {tags_dict.keys()}')
         return None
 
     # FIXME(ycho): here, hardcoded assumption
@@ -49,23 +69,6 @@ def get_camera_pose(detector: Detector,
     T[..., :3, :3] = R.reshape(3, 3)
     T[..., :3, 3] = t.reshape(-1)
     return T
-
-
-@dataclass
-class Config:
-    # tag params
-    tag_family: str = 'tag36h11'
-    tag_size: float = 0.159
-    tag_id: int = 0
-
-    # cam params
-    cam: CameraConfig = CameraConfig(
-        img_width=424,
-        img_height=240,
-    )
-    device_id: str = '233622074125'
-    # app params
-    out_file: str = '/tmp/cam.pkl'
 
 
 @oc_cli
@@ -100,10 +103,11 @@ def main(cfg: Config = Config()):
 
             # save cam_from_tag transform to `out_file`.
             if T is not None:
-                Path(cfg.out_file).parent.mkdir(parents=True,
-                        exist_ok=True)
-                with open(cfg.out_file, 'wb') as fp:
-                    pickle.dump(dict(K=cam.Ks.squeeze(axis=0), T=T), fp)
+                Path(cfg.cam_path).parent.mkdir(parents=True,
+                                                exist_ok=True)
+                with open(cfg.cam_path, 'w') as fp:
+                    K = cam.Ks.squeeze(axis=0)
+                    json.dump(dict(K=K.tolist(), T=T.tolist()), fp)
                 return
 
 
