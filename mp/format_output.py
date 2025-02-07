@@ -47,6 +47,9 @@ def pose_from_kpt(k: np.ndarray) -> np.ndarray:
     y = np.cross(z, x)
     y /= np.linalg.norm(y, axis=-1, keepdims=True)
 
+    z = np.cross(x, y)
+    z /= np.linalg.norm(y, axis=-1, keepdims=True)
+
     R = np.stack([x, y, z], axis=-1)
     T = [np.eye(4) for _ in range(len(k))]
     T = np.stack(T, axis=0)
@@ -76,8 +79,8 @@ def grasp_from_kpt(k: np.ndarray, eps: Optional[float] = 0.025) -> np.ndarray:
 @oc_cli
 def main(cfg: Config):
     # Load camera intrinsics & extrinsics.
-    with open(cfg.cam_path, 'rb') as fp:
-        data = pickle.load(fp)
+    with open(cfg.cam_path, 'r') as fp:
+        data = json.load(fp)
         data = {k: np.asarray(v, dtype=np.float32)
                 for (k, v) in data.items()}
         K = data['K']

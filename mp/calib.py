@@ -72,7 +72,7 @@ def get_camera_pose(detector: Detector,
 
 
 @oc_cli
-def main(cfg: Config = Config()):
+def main(cfg: Config):
     cam_cfg = MultiRSCamera.Config.map_devices(cfg.cam,
                                                [cfg.device_id])
     detector = Detector(

@@ -5,6 +5,7 @@ from natsort import natsorted
 from pathlib import Path
 from dataclasses import dataclass
 import pickle
+import json
 import cv2
 from config import oc_cli
 import numpy as np
@@ -66,7 +67,15 @@ def np2o3d_img2pcd(
     return pcd.to_legacy()
 
 
-def pose_from_kpt(k):
+def pose_from_kpt(k: np.ndarray) -> np.ndarray:
+    """
+    Arg:
+        k: A[..., 21, 3] MANO keypoint array.
+
+    Return:
+        A[..., 4,4] homogeneous matrix representing the tool pose
+        (world_from_tool transform) formatted as [R,t; 0,1]
+    """
     wrist = k[..., 0, :]
     index = k[..., 8, :]
     thumb = k[..., 4, :]
@@ -74,11 +83,17 @@ def pose_from_kpt(k):
     u2 = thumb - wrist
 
     z = np.cross(u1, u2)
-    z /= np.linalg.norm(z)
+    z /= np.linalg.norm(z, axis=-1, keepdims=True)
+
     x = 0.5 * (u1 + u2)
-    x /= np.linalg.norm(x)
+    x /= np.linalg.norm(x, axis=-1, keepdims=True)
+
     y = np.cross(z, x)
-    y /= np.linalg.norm(y)
+    y /= np.linalg.norm(y, axis=-1, keepdims=True)
+
+    z = np.cross(x, y)
+    z /= np.linalg.norm(y, axis=-1, keepdims=True)
+
     R = np.stack([x, y, z], axis=-1)
     T = [np.eye(4) for _ in range(len(k))]
     T = np.stack(T, axis=0)
@@ -89,11 +104,13 @@ def pose_from_kpt(k):
 
 @oc_cli
 def main(cfg: Config):
-    # load camera intrinsics & extrinsics.
-    with open(cfg.cam_path, 'rb') as fp:
-        data = pickle.load(fp)
+    # Load camera intrinsics & extrinsics.
+    with open(cfg.cam_path, 'r') as fp:
+        data = json.load(fp)
+        data = {k: np.asarray(v, dtype=np.float32)
+                for (k, v) in data.items()}
         K = data['K']
-        T = data['T']
+        T = data['T']  # T = cam_from_tag
 
     # load computed trajectory (output of client.py)
     with open(cfg.traj_path, 'rb') as fp:
@@ -121,7 +138,7 @@ def main(cfg: Config):
     vis.create_window()
 
     # axis shows where the tag is (was) w.r.t. the camera
-    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
+    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(0.2)
     axis.transform(T)
     vis.add_geometry(axis)
 
@@ -142,7 +159,7 @@ def main(cfg: Config):
     for j in range(100000):
         i = j % len(ps)
 
-        p = o3d.geometry.TriangleMesh.create_coordinate_frame(0.2)
+        p = o3d.geometry.TriangleMesh.create_coordinate_frame(0.1)
         p.transform(Ts[i])
         pose.vertices = p.vertices
         vis.update_geometry(pose)

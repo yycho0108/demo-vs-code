@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import pickle
+import json
 from pathlib import Path
 import requests
 import cv2

@@ -2,6 +2,7 @@ import sys
 sys.path.append('..')
 import numpy as np
 import pickle
+import json
 from env.bimanual_bullet import PickCubeEnv
 from scipy.spatial.transform import Rotation as R
 from mp.iface import Command
@@ -58,7 +59,7 @@ def main():
     # Do motion planning
     gripper_open_command = [Command(left_gripper_open=True, right_gripper_open=True)]*20
 
-    with open('/tmp/sav005/act.json', 'rb') as fp:
+    with open('/tmp/sav010/act.json', 'rb') as fp:
         traj = json.load(fp)
         tool_poses = np.asarray(traj['tool_pose'], dtype=np.float32)
         grasp_flags = np.asarray(traj['grasp_flag'], dtype=bool)
