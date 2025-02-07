@@ -24,6 +24,7 @@ if __name__ == "__main__":
         "ctrl": {
             "gripper_gain": 0.03,
         },
+        "problems": [0,1,2]
     }
 
     env = PickCubeEnv(cfg)
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     env.draw_frame(right_tool_pose)
 
     # Solve IK for pre-defined poses
-    grasp_left_tool_pos = cube_pose[:3]
+    grasp_left_tool_pos = np.array([0.4, 0.05, 0.65])
     grasp_left_tool_quat = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', -np.pi/4)).as_quat()
     grasp_left_tool_pose = np.concatenate([grasp_left_tool_pos, grasp_left_tool_quat])
     env.draw_frame(grasp_left_tool_pose)
