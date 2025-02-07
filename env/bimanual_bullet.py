@@ -1,4 +1,5 @@
 from pybullet_utils import bullet_client
+from typing import Optional
 from abc import ABC, abstractmethod
 from pathlib import Path
 from enum import IntEnum
@@ -666,17 +667,41 @@ class PickCubeEnv(EnvBase):
 
         # Cube
         cube_size = [0.015, 0.015, 0.1]
-        card_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
-        self.cube_pos = [table_pos[0], 0.0, card_z]
+        cube_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
+        self.cube_pos = [table_pos[0], 0.0, cube_z]
         self.cube_quat = [0.0, 0.0, 0.0, 1.0]
         cube_id = create_box(*cube_size, mass=0.5, color=RED)
         set_pose(cube_id,(self.cube_pos, self.cube_quat))
         set_dynamics(cube_id, lateralFriction=100.0, spinningFriction=100.0, rollingFriction=0.01, restitution=0.0, contactStiffness=10000000.0, contactDamping=10000.0)
         self.obj_ids["cube"] = cube_id
 
+        self.define_problems(table_shape, table_pos, cube_size)
+
+    def define_problems(self, table_shape, table_pos, cube_size):
+        cube_z = table_pos[2] + table_shape[2]/2 + cube_size[2]/2
+
+        self.problems = {
+            0: {
+                "cube_pos": [table_pos[0], 0.0, cube_z],
+                "cube_quat": [0.0, 0.0, 0.0, 1.0]
+            },
+            1: {
+                "cube_pos": [table_pos[0]+0.05, 0.05, cube_z],
+                "cube_quat": [0.0, 0.0, 0.0, 1.0]
+            },
+            2: {
+                "cube_pos": [table_pos[0]-0.05, -0.02, cube_z],
+                "cube_quat": [0.0, 0.0, 0.0, 1.0]
+            }
+        }
+
     def reset(self):
+        problem = self.problems[np.random.choice(self.cfg["problems"])]
+        cube_pos = problem["cube_pos"]
+        cube_quat = problem["cube_quat"]
+
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
-        set_pose(self.obj_ids["cube"], (self.cube_pos, self.cube_quat))
+        set_pose(self.obj_ids["cube"], (cube_pos, cube_quat))
 
     def check_success(self):
         cube_pos = self.get_object_poses()["cube"][:3]
@@ -704,16 +729,6 @@ class PenholderEnv(EnvBase):
         set_pose(penholder_id,(self.holder_pos, self.holder_quat))
         self.obs_ids["holder"] = penholder_id
 
-        # pen_radius = 0.01
-        # pen_height = 0.12
-
-        # pen_z = table_pos[2] + table_shape[2]/2 + pen_height/2
-        # self.pen_pos = [table_pos[0]+0.1, 0.1, pen_z]
-        # self.pen_quat = [0.0, 0.0, 0.0, 1.0]
-        # pen_id = create_cylinder(pen_radius, pen_height, mass=0.1, color=BLUE)
-        # set_pose(pen_id,(self.pen_pos, self.pen_quat))
-        # self.obj_ids["pen"] = pen_id
-
         pen_size = [0.01, 0.01, 0.12]
 
         pen_z = table_pos[2] + table_shape[2]/2 + pen_size[2]/2
@@ -724,6 +739,33 @@ class PenholderEnv(EnvBase):
         set_dynamics(pen_id, lateralFriction=100.0, spinningFriction=100.0, rollingFriction=0.01, restitution=0.0, contactStiffness=10000000.0, contactDamping=10000.0)
         self.obj_ids["pen"] = pen_id
 
+        self.define_problems(table_shape, table_pos, pen_size)
+
+    def define_problems(self, table_shape, table_pos, pen_size):
+        holder_z = table_pos[2] + table_shape[2]/2
+        pen_z = table_pos[2] + table_shape[2]/2 + pen_size[2]/2
+
+        self.problems = {
+            0: {
+                "holder_pos": [table_pos[0], 0.0, holder_z],
+                "holder_quat": [0.0, 0.0, 0.0, 1.0],
+                "pen_pos": [table_pos[0], 0.1, pen_z],
+                "pen_quat": [0.0, 0.0, 0.0, 1.0],
+            },
+            1: {
+                "holder_pos": [table_pos[0]+0.05, -0.03, holder_z],
+                "holder_quat": [0.0, 0.0, 0.0, 1.0],
+                "pen_pos": [table_pos[0]-0.01, 0.05, pen_z],
+                "pen_quat": [0.0, 0.0, 0.0, 1.0],
+            },
+            2: {
+                "holder_pos": [table_pos[0]-0.02, -0.02, holder_z],
+                "holder_quat": [0.0, 0.0, 0.0, 1.0],
+                "pen_pos": [table_pos[0]+0.05, 0.1, pen_z],
+                "pen_quat": [0.0, 0.0, 0.0, 1.0],
+            }
+        }
+
     def check_success(self):
         pen_pos = self.get_object_poses()["pen"][:3]
         holder_pos = self.get_object_poses()["holder"][:3]
@@ -731,9 +773,15 @@ class PenholderEnv(EnvBase):
         return np.linalg.norm(holder_pos[:2] - pen_pos[:2]) < 0.03 and holder_pos[2] < 0.8
 
     def reset(self):
+        problem = self.problems[np.random.choice(self.cfg["problems"])]
+        holder_pos = problem["holder_pos"]
+        holder_quat = problem["holder_quat"]
+        pen_pos = problem["pen_pos"]
+        pen_quat = problem["pen_quat"]
+
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
-        set_pose(self.obs_ids["holder"], (self.holder_pos, self.holder_quat))
-        set_pose(self.obj_ids["pen"],(self.pen_pos, self.pen_quat))
+        set_pose(self.obs_ids["holder"], (holder_pos, holder_quat))
+        set_pose(self.obj_ids["pen"],(pen_pos, pen_quat))
 
 class CurlingEnv(EnvBase):
     def __init__(self, cfg):
@@ -759,9 +807,33 @@ class CurlingEnv(EnvBase):
         set_dynamics(curling_id, lateralFriction=0.05, spinningFriction=0.05)
         self.obj_ids["curling"] = curling_id
     
+        self.define_problems(table_shape, table_pos)
+
+    def define_problems(self, table_shape, table_pos):
+        curling_z = table_pos[2] + table_shape[2]/2
+
+        self.problems = {
+            0: {
+                "curling_pos": [0.4, 0.0, curling_z],
+                "curling_quat": [0, 0, 0.7071068, 0.7071068]
+            },
+            1: {
+                "curling_pos": [0.4, 0.025, curling_z],
+                "curling_quat": [0, 0, 0.7071068, 0.7071068]
+            },
+            2: {
+                "curling_pos": [0.4, 0.05, curling_z],
+                "curling_quat": [0, 0, 0.7071068, 0.7071068]
+            }
+        }
+    
     def reset(self):
+        problem = self.problems[np.random.choice(self.cfg["problems"])]
+        curling_pos = problem["curling_pos"]
+        curling_quat = problem["curling_quat"]
+
         set_joint_positions(self.robot_id, self.robot.arm_joint_indices, self.cfg["q_init"])
-        set_pose(self.obj_ids["curling"], (self.curling_pos, self.curling_quat))
+        set_pose(self.obj_ids["curling"], (curling_pos, curling_quat))
 
     def check_success(self):
         curling_pos = self.get_object_poses()["curling"][:3]

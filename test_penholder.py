@@ -24,6 +24,7 @@ if __name__ == "__main__":
         "ctrl": {
             "gripper_gain": 0.03,
         },
+        "problems": [0,1,2],
     }
 
     env = PenholderEnv(cfg)
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     for z_rot in z_rot_candidates:
         grasp_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
         env.draw_frame(grasp_left_tool_pose)
-        grasp_q_left = env.solve_tool_ik(grasp_left_tool_pose, "left", check_collision=True)
+        grasp_q_left = env.solve_tool_ik(grasp_left_tool_pose, "left", gripper_open=True, check_collision=True)
         if grasp_q_left is not None:
             break
     else:
@@ -49,7 +50,7 @@ if __name__ == "__main__":
     
     up_grasp_left_tool_pose = np.concatenate([pen_pose[:3], left_tool_pose[3:]])
     up_grasp_left_tool_pose[2] += 0.15
-    z_rot_candidates = np.linspace(-np.pi/2, 0, 10)
+    z_rot_candidates = np.linspace(-np.pi, 0, 10)
     for z_rot in z_rot_candidates:
         up_grasp_left_tool_pose[3:] = (R.from_quat(left_tool_pose[3:]) * R.from_euler('z', z_rot)).as_quat()
         env.draw_frame(up_grasp_left_tool_pose)

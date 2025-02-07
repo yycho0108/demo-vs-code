@@ -24,6 +24,7 @@ if __name__ == "__main__":
         "ctrl": {
             "gripper_gain": 0.03,
         },
+        "problems": [0,1,2],
     }
 
     env = PickCubeEnv(cfg)

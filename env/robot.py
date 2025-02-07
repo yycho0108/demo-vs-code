@@ -31,7 +31,7 @@ class Robot:
 
         self.all_joint_limits = self._get_joint_limits(robot_id)
         self.left_arm_joint_limits = [self.all_joint_limits[0][:6], self.all_joint_limits[1][:6]]
-        self.right_arm_joint_limits = [self.all_joint_limits[0][8:14] + self.all_joint_limits[1][8:14]]
+        self.right_arm_joint_limits = [self.all_joint_limits[0][8:14], self.all_joint_limits[1][8:14]]
         self.arm_joint_limits = [
             self.all_joint_limits[0][:6] + self.all_joint_limits[0][8:14],
             self.all_joint_limits[1][:6] + self.all_joint_limits[1][8:14],
@@ -90,12 +90,12 @@ class Robot:
         q_orig = get_joint_positions(self.robot_id, self.arm_joint_indices)
 
         set_joint_positions(self.robot_id, self.arm_joint_indices, q)
-        left_ee = get_link_pose(self.robot_id, self.robot.left_arm_joint_indices[-1])
-        right_ee = get_link_pose(self.robot_id, self.robot.right_arm_joint_indices[-1])
+        left_ee_pos, left_ee_quat = get_link_pose(self.robot_id, self.left_arm_joint_indices[-1])
+        right_ee_pos, right_ee_quat = get_link_pose(self.robot_id, self.right_arm_joint_indices[-1])
 
         set_joint_positions(self.robot_id, self.arm_joint_indices, q_orig)
 
-        return np.array([left_ee, right_ee])
+        return np.array(left_ee_pos + left_ee_quat + right_ee_pos + right_ee_quat)
 
     def ik(self, ee, left_or_right="left", max_attempts=5, max_iterations=200):
         """
@@ -111,8 +111,14 @@ class Robot:
                 max_attempts=max_attempts,
                 max_iterations=max_iterations,
             )
-            if len(qs) > 0 :
-                q = np.array(qs[0][:6])
+            if len(qs) > 0:
+                for q_sol in qs:
+                    q_sol = np.array(q_sol[:6])
+                    within_limits = ((self.left_arm_joint_limits[0] <= q_sol) & (q_sol <= self.left_arm_joint_limits[1])).all()
+                    if within_limits:
+                        q = np.array(q_sol[:6])
+                else:
+                    print("No IK solution within joint limits found for left arm")
         elif left_or_right == "right":
             qs = multiple_sub_inverse_kinematics(
                 self.robot_id,
@@ -123,7 +129,13 @@ class Robot:
                 max_iterations=max_iterations,
             )
             if len(qs) > 0:
-                q = np.array(qs[0][8:14])
+                for q_sol in qs:
+                    q_sol = np.array(q_sol[6:])
+                    within_limits = ((self.right_arm_joint_limits[0] <= q_sol) & (q_sol <= self.right_arm_joint_limits[1])).all()
+                    if within_limits:
+                        q = np.array(q_sol[6:])
+                else:
+                    print("No IK solution within joint limits found for right arm")
         else:
             raise ValueError("left_or_right should be either 'left' or 'right'")
 
