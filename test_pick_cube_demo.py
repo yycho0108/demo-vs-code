@@ -32,6 +32,8 @@ def main():
         "ctrl": {
             "gripper_gain": 0.03,
         },
+        # "problems": [0,1,2],
+        "problems": [0],
     }
 
     env = PickCubeEnv(cfg)
