@@ -117,6 +117,7 @@ class Robot:
                     within_limits = ((self.left_arm_joint_limits[0] <= q_sol) & (q_sol <= self.left_arm_joint_limits[1])).all()
                     if within_limits:
                         q = np.array(q_sol[:6])
+                        break
                 else:
                     print("No IK solution within joint limits found for left arm")
         elif left_or_right == "right":
@@ -134,6 +135,7 @@ class Robot:
                     within_limits = ((self.right_arm_joint_limits[0] <= q_sol) & (q_sol <= self.right_arm_joint_limits[1])).all()
                     if within_limits:
                         q = np.array(q_sol[6:])
+                        break
                 else:
                     print("No IK solution within joint limits found for right arm")
         else:
