@@ -3,3 +3,11 @@ rerun-sdk[notebook]
 ompl @ https://github.com/ompl/ompl/releases/download/prerelease/ompl-1.6.0-cp38-cp38-manylinux_2_28_x86_64.whl
 scipy
 tqdm
+
+natsort
+opencv-python
+omegaconf
+numpy
+pyrealsense2
+open3d
+dt_apriltags

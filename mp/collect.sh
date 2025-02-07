@@ -2,7 +2,7 @@
 
 # == CONFIGURE ==
 DEVICE_ID='819312070397' # replace this after running `python3 cam.py`
-SAVE_DIR='/tmp/sav010'
+SAVE_DIR='/tmp/sav011'
 FPS=5
 TAG_ID=0 # you may need to replace this with another ID
 
