@@ -31,30 +31,11 @@ def pose_from_kpt(k: np.ndarray) -> np.ndarray:
     Return:
         A[..., 4,4] homogeneous matrix representing the tool pose
         (world_from_tool transform) formatted as [R,t; 0,1]
-    """
-    wrist = k[..., 0, :]
-    index = k[..., 8, :]
-    thumb = k[..., 4, :]
-    u1 = index - wrist
-    u2 = thumb - wrist
-
-    z = np.cross(u1, u2)
-    z /= np.linalg.norm(z, axis=-1, keepdims=True)
-
-    x = 0.5 * (u1 + u2)
-    x /= np.linalg.norm(x, axis=-1, keepdims=True)
-
-    y = np.cross(z, x)
-    y /= np.linalg.norm(y, axis=-1, keepdims=True)
-
-    z = np.cross(x, y)
-    z /= np.linalg.norm(y, axis=-1, keepdims=True)
-
-    R = np.stack([x, y, z], axis=-1)
+    """    
+    # == REPLACE THIS ==
     T = [np.eye(4) for _ in range(len(k))]
     T = np.stack(T, axis=0)
-    T[..., :3, :3] = R
-    T[..., :3, 3] = 0.5 * (index + thumb)
+    # ==================
     return T
 
 
@@ -67,13 +48,11 @@ def grasp_from_kpt(k: np.ndarray, eps: Optional[float] = 0.025) -> np.ndarray:
     Return:
         A[...] boolean array representing the grasp flag.
     """
-    wrist = k[..., 0, :]
-    index = k[..., 8, :]
-    thumb = k[..., 4, :]
-    dist = index - thumb
-    dist = np.linalg.norm(index - thumb,
-                          axis=-1)
-    return dist < eps
+    # == REPLACE THIS ==
+    out = np.zeros((len(k)), dtype=bool)
+    # ==================
+    return out
+
 
 
 @oc_cli
