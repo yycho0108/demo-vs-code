@@ -21,10 +21,7 @@ class Config:
     tag_id: int = 0
 
     # cam params
-    cam: CameraConfig = CameraConfig(
-        img_width=424,
-        img_height=240,
-    )
+    cam: CameraConfig = CameraConfig()
     device_id: str = '233622074125'
 
     # app params
