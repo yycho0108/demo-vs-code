@@ -159,6 +159,7 @@ def main(cfg: Config):
 
                     # <- interpret `traj` from srv ->
                     ps = []
+                    rs = []
                     for det in traj:
                         c, k, r = det['cam'], det['kpt'], det['rgt']
                         c = np.asarray(c)
@@ -166,6 +167,7 @@ def main(cfg: Config):
                         t = c.reshape(-1, 1, 3)[-1]
                         p = k.reshape(-1, 21, 3)[-1] + t
                         ps.append(p)
+                        rs.append(r)
 
                     # <- update `ps_world` output ->
                     for i in range(len(ps)):
